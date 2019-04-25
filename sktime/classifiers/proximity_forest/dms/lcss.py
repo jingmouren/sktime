@@ -2,7 +2,7 @@ from classifiers.proximity_forest.dms.distance_measure import DistanceMeasure
 from classifiers.proximity_forest.dms.dtw import Dtw
 
 from datasets import load_gunpoint
-from distances.elastic_cython import lcss_distance
+from distances import lcss_distance
 
 
 class Lcss(Dtw):

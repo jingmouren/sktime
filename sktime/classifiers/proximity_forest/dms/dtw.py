@@ -5,8 +5,8 @@ from pandas import DataFrame
 from classifiers.proximity_forest.dms.distance_measure import DistanceMeasure
 import numpy as np
 
+from distances import dtw_distance
 
-from sktime.distances.elastic_cython import dtw_distance
 
 class Dtw(DistanceMeasure):
 
@@ -29,3 +29,9 @@ class Dtw(DistanceMeasure):
 if __name__ == "__main__":
     dtw = Dtw(delta=5)
     print('hello')
+    a = np.array([1,2,3], dtype=float)
+    b = np.array([1,5,3], dtype=float)
+    a = a.reshape((a.shape[0], 1))
+    b = b.reshape((b.shape[0], 1))
+    dist = dtw.distance(a, b, 100)
+    print(dist)

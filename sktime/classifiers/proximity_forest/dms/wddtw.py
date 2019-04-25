@@ -3,7 +3,7 @@ from classifiers.proximity_forest.dms.dtw import Dtw
 from classifiers.proximity_forest.dms.wdtw import Wdtw
 
 from datasets import load_gunpoint
-from distances.elastic_cython import wddtw_distance
+from distances import wddtw_distance
 
 
 class Wddtw(Wdtw):

@@ -3,8 +3,11 @@
 
 import codecs
 import re
+
+import numpy
 from setuptools import find_packages, setup
 import os
+from Cython.Build import cythonize
 
 
 here = os.path.abspath(os.path.dirname(__file__))
@@ -37,7 +40,7 @@ URL = 'https://github.com/kiraly-group/sktime'
 LICENSE = 'undecided'
 DOWNLOAD_URL = 'https://github.com/kiraly-group/sktime'
 VERSION = find_version('sktime', '__init__.py')
-INSTALL_REQUIRES = ['numpy', 'scipy', 'scikit-learn', 'pandas']
+INSTALL_REQUIRES = ['numpy', 'scipy', 'scikit-learn', 'pandas', 'cython']
 CLASSIFIERS = ['Intended Audience :: Science/Research',
                'Intended Audience :: Developers',
                'License :: OSI Approved',
@@ -77,4 +80,7 @@ setup(name=DISTNAME,
       packages=find_packages(),
       include_package_data=True,
       install_requires=INSTALL_REQUIRES,
-      extras_require=EXTRAS_REQUIRE)
+      extras_require=EXTRAS_REQUIRE,
+      ext_modules=cythonize("sktime/distances/elastic_cython.pyx"),
+      include_dirs=[numpy.get_include()] # needed for cythonized code to pickup numpy c libs
+      )
