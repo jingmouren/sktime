@@ -22,6 +22,16 @@ def test_output_format_dim():
                     assert isinstance(Xt, (pd.DataFrame, pd.Series))
                     assert Xt.shape[0] == X.shape[0]
 
+                    # Check number of generated intervals/columns.
+                    if n_intervals != 'random':
+                        if np.issubdtype(type(n_intervals), np.floating):
+                            assert Xt.shape[1] == np.maximum(1, int(n_obs * n_intervals)) * n_cols
+                        elif np.issubdtype(type(n_intervals), np.integer):
+                            assert Xt.shape[1] == n_intervals * n_cols
+                        elif n_intervals == 'sqrt':
+                            assert Xt.shape[1] == np.maximum(1, int(np.sqrt(n_obs))) * n_cols
+                        elif n_intervals == 'log':
+                            assert Xt.shape[1] == np.maximum(1, int(np.log(n_obs))) * n_cols
 
 # Check that exception is raised for bad input args.
 def test_bad_input_args():

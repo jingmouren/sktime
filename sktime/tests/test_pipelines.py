@@ -88,11 +88,13 @@ def test_pandas_friendly_column_transformer_pipeline():
          ('ts_copy', FunctionTransformer(func=id_func, validate=False), 'ts_copy')])
     strategy = [
         ('feature_extract', column_transformer),
-        ('rfestimator', estimator)]
-    model = Pipeline(memory=None,
-                     steps=strategy)
-    model.fit(X, y)
-    assert_array_equal(model.predict(Xdf_test), np.ones(y_test.shape[0]) * 2)
+        ('tabularise', Tabulariser()),
+        ('rfestimator', RandomForestClassifier(n_estimators=2))]
+    model = TSPipeline(steps=steps)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    assert y_pred.shape[0] == y_test.shape[0]
+    np.testing.assert_array_equal(np.unique(y_pred), np.unique(y_test))
 
 
 def test_RowwiseTransformer_pipeline():
@@ -105,7 +107,7 @@ def test_RowwiseTransformer_pipeline():
     column_transformer = ColumnTransformer(
         [('mean', FunctionTransformer(func=mean_func, validate=False), 'ts'),
          ('first', FunctionTransformer(func=first_func, validate=False), 'ts_copy')])
-    estimator = RandomForestClassifier(random_state=1)
+    estimator = RandomForestClassifier(n_estimators=2, random_state=1)
     strategy = [
         ('feature_extract', column_transformer),
         ('rfestimator', estimator)]
@@ -119,7 +121,7 @@ def test_RowwiseTransformer_pipeline():
     column_transformer = TSColumnTransformer(
         [('mean', RowwiseTransformer(FunctionTransformer(func=np.mean, validate=False)), 'ts'),
          ('first', FunctionTransformer(func=first_func, validate=False), 'ts_copy')])
-    estimator = RandomForestClassifier(random_state=1)
+    estimator = RandomForestClassifier(n_estimators=2, random_state=1)
     strategy = [
         ('feature_extract', column_transformer),
         ('rfestimator', estimator)]
