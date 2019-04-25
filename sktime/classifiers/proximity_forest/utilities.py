@@ -47,6 +47,6 @@ class Utilities:
         for instance_index in range(0, num_instances):
             instance = instances.iloc[instance_index, :]
             class_label = class_labels[instance_index]
-            bin = bins[class_label]
-            bin.append(instance)
+            instances_bin = bins[class_label]
+            instances_bin.append(instance)
         return bins

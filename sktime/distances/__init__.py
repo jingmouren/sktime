@@ -1,1 +1,1 @@
-from elastic_cython import *
+from .elastic_cython import *

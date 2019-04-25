@@ -15,10 +15,15 @@ class Parameterised:
         raise Exception('this is an abstract class')
 
     def _set_param(self, name, default_value, params, prefix='', suffix=''):
-        name = prefix + name + suffix
+        varname = prefix + name + suffix
         try:
             value = params[name]
         except:
-            warnings.warn('using default value for ' + name)
+            s = "using default value for " + str(name) + ": "
+            if callable(default_value):
+                s += default_value.__name__
+            else:
+                s += str(default_value)
+            warnings.warn(s, stacklevel=3)
             value = default_value
-        setattr(self, name, value)
+        setattr(self, varname, value)

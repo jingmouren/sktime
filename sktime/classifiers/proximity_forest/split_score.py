@@ -1,9 +1,10 @@
-from classifiers.proximity_forest.parameterised import Parameterised
 
 
-class SplitScore(Parameterised):
-    def __init__(self, **params):
-        super(SplitScore, self).__init__(**params)
+def gini(root, *nodes):
+    pass
 
-    def score(self):
-        raise Exception('this is an abstract method')
+def ig(root, *nodes):
+    pass
+
+def chi(root, *nodes):
+    pass

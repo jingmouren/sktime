@@ -13,18 +13,22 @@ from datasets import load_gunpoint
 from distances.elastic_cython import dtw_distance, lcss_distance, erp_distance
 
 
-class Tree(Randomised, BaseEstimator, ClassifierMixin):
+class TreeOld(Randomised, BaseEstimator, ClassifierMixin):
     distance_measure_pool_key = 'distance_measure_pool'
     class_labels_key = 'class_label_bins'
     instances_key = 'instance_bins'
     r_key = 'r'
+
+    def get_class_distribution(self):
+        # sum = self._
+        pass
 
     def __init__(self, **params):
         self._distance_measure_pool = None
         self._r = None
         self._split = None
         self._branches = None
-        super(Tree, self).__init__(**params)
+        super(TreeOld, self).__init__(**params)
 
     def _predict_proba_inst(self, instance):
         pass
@@ -72,13 +76,13 @@ class Tree(Randomised, BaseEstimator, ClassifierMixin):
         self._split = self._get_best_split(binned_instances)
         if self._should_branch(binned_instances):
             for bin in binned_instances:
-                tree = Tree(**{self.distance_measure_pool_key: self._distance_measure_pool,
-                               self.r_key: self._r})
+                tree = TreeOld(**{self.distance_measure_pool_key: self._distance_measure_pool,
+                                  self.r_key: self._r})
                 self._branches.append(tree)
                 tree._branch(bin)
 
     def set_params(self, **params):
-        super(Tree, self).set_params(**params)
+        super(TreeOld, self).set_params(**params)
         self._distance_measure_pool = params[self.distance_measure_pool_key]
         self._r = params.get(self.r_key, 1)
 
@@ -138,5 +142,5 @@ if __name__ == "__main__":
          Erp.delta_key: [1, 2, 3, 4, 5, 6, 7],
          Erp.g_key: [1, 2, 4, 5, 6, 7, 2]}
     ]
-    tree = Tree(**{Randomised.rand_state_key: np.random.RandomState(3), Tree.distance_measure_pool_key: params})
+    tree = TreeOld(**{Randomised.rand_state_key: np.random.RandomState(3), TreeOld.distance_measure_pool_key: params})
     tree.fit(x_train, y_train)
