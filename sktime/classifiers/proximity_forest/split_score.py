@@ -1,7 +1,7 @@
 import math
 
 
-def gini(self, root, *nodes):
+def gini(self, root, *nodes): # todo make sure this outputs 1 (max) to 0 (min) as gini is usually other way around (i.e. 0 is pure, 1 is impure (or usually 0.5))
     root_score = gini_node(self, root)
     root_num_instances = node_size(self, root)
     node_score_sum = 0
@@ -16,9 +16,10 @@ def gini(self, root, *nodes):
 def gini_node(self, binned_instances):
     num_instances = node_size(self, binned_instances)
     score = 1
-    for class_label, instances in binned_instances.items():
-        proportion = len(instances) / num_instances
-        score -= math.pow(proportion, 2)
+    if num_instances > 0:
+        for class_label, instances in binned_instances.items():
+            proportion = len(instances) / num_instances
+            score -= math.pow(proportion, 2)
     return score
 
 def ig(self, root, *nodes):

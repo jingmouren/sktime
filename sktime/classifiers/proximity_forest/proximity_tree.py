@@ -2,6 +2,7 @@ from numpy.ma import floor
 from scipy.stats import rv_continuous, rv_discrete, uniform, randint
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.utils.estimator_checks import check_estimator
 
 from classifiers.proximity_forest.randomised import Randomised
 from classifiers.proximity_forest.split_score import gini
@@ -12,6 +13,11 @@ from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, 
     msm_distance
 from utils.transformations import tabularise
 
+# todo docs
+# todo ref paper
+# todo doctests
+# todo unit tests
+# todo comment up!
 
 def get_default_param_pool(self, instances):
     instance_length = 4  # todo
@@ -50,7 +56,7 @@ def get_default_param_pool(self, instances):
     ]
     return param_pool
 
-class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
+class ProximityTree(Randomised, BaseEstimator):
     # todo variable hinting
 
     stop_splitting_key = 'stop_splitting'  # todo make read only (module level func?)
@@ -62,6 +68,8 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
     _exemplar_class_labels_key = 'exemplar_class_labels'
     _param_perm_key = 'param_perm'
     _gain_value_key = 'gain_value'
+    _distance_measure_key = 'distance_measure'
+    _exemplar_bins_key = 'exemplar_bin_keys'
 
     default_gain = gini
     default_stop_splitting = pure
@@ -75,29 +83,55 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
         self._param_pool_obtainer = None
         self._branches = None
         self._r = None
+        self._split = None
+        self._unique_class_labels = None
         super().__init__(**params)
 
-    def _predict_proba_inst(self, instance):
-        pass
+    def _predict_proba_inst(self, instance): # todo recursive, needs to be converted to iterative
+        closest_exemplar_index = self._find_closest_exemplar_index(self._split[self._exemplar_instances_key],
+                                                                   self._split[self._distance_measure_key],
+                                                                   instance,
+                                                                   self._split[self._param_perm_key],)
+        if self._branches[closest_exemplar_index] is None:
+            # return closest exemplar class label
+            distribution = np.zeros((len(self._unique_class_labels)))
+            predicted_class = self._split[self._exemplar_class_labels_key][closest_exemplar_index]
+            raise Exception('not finished') # todo what should this return? dict? arr?
+        else:
+            return self._branches[closest_exemplar_index]._predict_proba_inst(instance)
 
     def predict_proba(self, instances):
-        # todo unpack panda
+        num_instances = instances.shape[0]
+        predictions = []
+        for instance_index in range(0, num_instances):
+            instance = instances.iloc[instance_index, :]
+            prediction = self._predict_proba_inst(instance)
+            predictions.append(prediction)
+        return predictions
+
+    def predict(self, instances):
         pass
 
     def fit(self, instances, class_labels):
+        self._unique_class_labels = np.unique(class_labels)
         binned_instances = Utilities.bin_instances_by_class(instances, class_labels)
-        self._param_pool = self._param_pool_obtainer(instances)
-        self._branches = []
-        self._branch(binned_instances)
+        param_pool = self._param_pool_obtainer(instances)
+        self._branch(binned_instances, param_pool) # todo err check on params + class params too
+        return self
 
-    def _branch(self, binned_instances):
+    def _branch(self, binned_instances, param_pool): # todo recursive, needs to be converted to iterative!
+        self._param_pool = param_pool
         self._split = self._get_best_split(binned_instances)
-        # split = self._split
-        # if not self._stop_splitting(**split):
-        #     for class_label, instances_bin in binned_instances.items():
-        #         tree = ProximityTree(**self.get_params())
-        #         self._branches.append(tree)
-        #         tree._branch(instances_bin)
+        # print('best split')
+        # print(self._split)
+        self._branches = []
+        for exemplar_bin in self._split[self._exemplar_bins_key]:
+            if not self._stop_splitting(exemplar_bin):
+                tree = ProximityTree(**self.get_params()) # duplicate this tree config
+                self._branches.append(tree)
+                tree._branch(exemplar_bin, param_pool)
+            else:
+                self._branches.append(None)
 
     def _get_rand_param_perm(self, params=None):  # list of param dicts todo split into two methods
         # example:
@@ -113,7 +147,23 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
 
     def _get_best_split(self, binned_instances):
         split = self._pick_rand_split(binned_instances)
-
+        # print(split[self._gain_value_key])
+        if self._r > 0:
+            splits = [split]
+            best_gain = split[self._gain_value_key]
+            for index in range(0, self._r):
+                other_split = self._pick_rand_split(binned_instances)
+                other_gain = other_split[self._gain_value_key]
+                # format_str = '{: 1.8f}'
+                # index_format_str = '{: 4d}'
+                # print(index_format_str.format(index) + "    " + format_str.format(other_gain) + "    " + format_str.format(best_gain))
+                if other_gain >= best_gain:
+                    if other_gain > best_gain:
+                        splits.clear()
+                        best_gain = other_gain
+                    splits.append(other_split)
+            split = self.get_rand().choice(splits)
+        return split
 
     def _pick_rand_split(self, binned_instances):
         param_perm = self._get_rand_param_perm()
@@ -133,26 +183,33 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
         for class_label, instances_bin in remaining_binned_instances.items():
             # compare to each exemplar
             for instance in instances_bin:
-                exemplar_index = 0
-                exemplar_instance = exemplar_instances[exemplar_index]
-                min_distance = self._find_distance(distance_measure, exemplar_instance, instance, param_perm)
-                closest_exemplar_indices = [exemplar_index]
-                for exemplar_index in range(1, len(exemplar_instances)):
-                    exemplar_instance = exemplar_instances[exemplar_index]
-                    distance = self._find_distance(distance_measure, exemplar_instance, instance, param_perm)
-                    if distance <= min_distance:
-                        if distance < min_distance:
-                            closest_exemplar_indices.clear()
-                            min_distance = distance
-                        closest_exemplar_indices.append(exemplar_index)
-                closest_exemplar_index = self.get_rand().choice(closest_exemplar_indices)
+                closest_exemplar_index = self._find_closest_exemplar_index(exemplar_instances, distance_measure, instance, param_perm)
                 exemplar_bins[closest_exemplar_index][class_label].append(instance)
         gain = self._gain(binned_instances, *exemplar_bins)
         return {
-            self._exemplar_instances_key: exemplar_instances,
+            self._exemplar_instances_key: exemplar_instances, # todo unpack into split class with functionality for predicting
+            self._exemplar_class_labels_key: exemplar_class_labels,
+            self._exemplar_bins_key: exemplar_bins,
             self._param_perm_key: param_perm,
+            self._distance_measure_key: distance_measure,
             self._gain_value_key: gain,
         }
+
+    def _find_closest_exemplar_index(self, exemplar_instances, distance_measure, instance, param_perm):
+        exemplar_index = 0
+        exemplar_instance = exemplar_instances[exemplar_index]
+        min_distance = self._find_distance(distance_measure, exemplar_instance, instance, param_perm)
+        closest_exemplar_indices = [exemplar_index]
+        for exemplar_index in range(1, len(exemplar_instances)):
+            exemplar_instance = exemplar_instances[exemplar_index]
+            distance = self._find_distance(distance_measure, exemplar_instance, instance, param_perm)
+            if distance <= min_distance:
+                if distance < min_distance:
+                    closest_exemplar_indices.clear()
+                    min_distance = distance
+                closest_exemplar_indices.append(exemplar_index)
+        closest_exemplar_index = self.get_rand().choice(closest_exemplar_indices)
+        return closest_exemplar_index
 
     def _find_distance(self, distance_measure, instance_a, instance_b, param_perm):
         instance_a = tabularise(instance_a, return_array=True)
@@ -202,12 +259,26 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
         super(ProximityTree, self)._set_param(self.param_pool_obtainer_key, self.default_param_pool_obtainer, params, prefix='_')
         super(ProximityTree, self)._set_param(self.stop_splitting_key, self.default_stop_splitting, params, prefix='_')
 
-    def get_params(self):
-        # todo get params
-        return {}
+    def get_params(self, deep=False):
+        return {
+            ProximityTree.gain_key: self._gain,
+            ProximityTree.r_key: self._r,
+            ProximityTree.param_pool_obtainer_key: self._param_pool_obtainer,
+            ProximityTree.stop_splitting_key: self._stop_splitting,
+            **super(ProximityTree, self).get_params(),
+        }
 
 if __name__ == "__main__":
+
+    # a = np.array([2,2,2,2], dtype=float)
+    # b = np.array([3,5,1,5], dtype=float)
+    # a = a.reshape((4,1))
+    # b = b.reshape((4,1))
+    # dist = lcss_distance(a, b, delta=1, epsilon=0.3)
+    # print(dist)
+
     x_train, y_train = load_gunpoint(split='TRAIN', return_X_y=True)
     x_test, y_test = load_gunpoint(split='TEST', return_X_y=True)
-    tree = ProximityTree(**{Randomised.rand_state_key: np.random.RandomState(3)})
+    tree = ProximityTree(**{Randomised.rand_state_key: np.random.RandomState(3).get_state(), ProximityTree.r_key: 1})
     tree.fit(x_train, y_train)
+

@@ -24,6 +24,6 @@ class Parameterised:
                 s += default_value.__name__
             else:
                 s += str(default_value)
-            warnings.warn(s, stacklevel=3)
+            warnings.warn(s) # , stacklevel=3)
             value = default_value
         setattr(self, varname, value)
