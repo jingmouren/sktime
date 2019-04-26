@@ -10,6 +10,7 @@ from classifiers.proximity_forest.utilities import Utilities
 from datasets import load_gunpoint
 from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, wddtw_distance, wdtw_distance, \
     msm_distance
+from utils.transformations import tabularise
 
 
 def get_default_param_pool(self, instances):
@@ -54,12 +55,11 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
 
     stop_splitting_key = 'stop_splitting'  # todo make read only (module level func?)
     gain_key = 'gain'
-    exemplar_class_key = 'exemplar_class'
-    exemplar_instance_key = 'exemplar_instance'
     param_pool_obtainer_key = 'param_pool_obtainer'
     distance_measure_key = 'distance_measure'
     r_key = 'r'
-    _exemplars_key = 'exemplars'
+    _exemplar_instances_key = 'exemplar_instances'
+    _exemplar_class_labels_key = 'exemplar_class_labels'
     _param_perm_key = 'param_perm'
     _gain_value_key = 'gain_value'
 
@@ -92,12 +92,12 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
 
     def _branch(self, binned_instances):
         self._split = self._get_best_split(binned_instances)
-        split = self._split
-        if not self._stop_splitting(**split):
-            for class_label, instances_bin in binned_instances.items():
-                tree = ProximityTree(**self.get_params())
-                self._branches.append(tree)
-                tree._branch(instances_bin)
+        # split = self._split
+        # if not self._stop_splitting(**split):
+        #     for class_label, instances_bin in binned_instances.items():
+        #         tree = ProximityTree(**self.get_params())
+        #         self._branches.append(tree)
+        #         tree._branch(instances_bin)
 
     def _get_rand_param_perm(self, params=None):  # list of param dicts todo split into two methods
         # example:
@@ -117,14 +117,14 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
 
     def _pick_rand_split(self, binned_instances):
         param_perm = self._get_rand_param_perm()
-        exemplars, remaining_binned_instances = self._pick_rand_exemplars(binned_instances)
+        exemplar_instances, exemplar_class_labels, remaining_binned_instances = self._pick_rand_exemplars(binned_instances)
         # one split per exemplar
-        splits = []
-        for exemplar in exemplars:
-            exemplar_instance_bin = {}
+        exemplar_bins = []
+        for exemplar in exemplar_instances:
+            instances_bin = {}
             for class_label in remaining_binned_instances.keys():
-                exemplar_instance_bin[class_label] = []
-            splits.append(exemplar_instance_bin)
+                instances_bin[class_label] = []
+            exemplar_bins.append(instances_bin)
         # extract distance measure
         distance_measure = param_perm[self.distance_measure_key]
         # trim distance measure to leave distance measure parameters
@@ -133,26 +133,33 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
         for class_label, instances_bin in remaining_binned_instances.items():
             # compare to each exemplar
             for instance in instances_bin:
-                min_distance = None
-                closest_exemplar_indices = []
-                for exemplar_index in range(0, len(exemplars)):
-                    exemplar = exemplars[exemplar_index]
-                    distance = distance_measure(exemplar, instance, **param_perm)
-                    if distance <= min_distance or min_distance is None:
-                        if distance < min_distance or min_distance is None:
+                exemplar_index = 0
+                exemplar_instance = exemplar_instances[exemplar_index]
+                min_distance = self._find_distance(distance_measure, exemplar_instance, instance, param_perm)
+                closest_exemplar_indices = [exemplar_index]
+                for exemplar_index in range(1, len(exemplar_instances)):
+                    exemplar_instance = exemplar_instances[exemplar_index]
+                    distance = self._find_distance(distance_measure, exemplar_instance, instance, param_perm)
+                    if distance <= min_distance:
+                        if distance < min_distance:
                             closest_exemplar_indices.clear()
                             min_distance = distance
                         closest_exemplar_indices.append(exemplar_index)
                 closest_exemplar_index = self.get_rand().choice(closest_exemplar_indices)
-                splits[closest_exemplar_index][class_label].append(instance)
-
-
-        gain = self._gain()
+                exemplar_bins[closest_exemplar_index][class_label].append(instance)
+        gain = self._gain(binned_instances, *exemplar_bins)
         return {
-            self._exemplars_key: exemplars,
+            self._exemplar_instances_key: exemplar_instances,
             self._param_perm_key: param_perm,
             self._gain_value_key: gain,
         }
+
+    def _find_distance(self, distance_measure, instance_a, instance_b, param_perm):
+        instance_a = tabularise(instance_a, return_array=True)
+        instance_b = tabularise(instance_b, return_array=True)
+        instance_a = np.transpose(instance_a)
+        instance_b = np.transpose(instance_b)
+        return distance_measure(instance_a, instance_b, **param_perm)
 
     def _pick_param_permutation(self, param_pool):  # dict of params
         param_permutation = {}
@@ -169,7 +176,8 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
         return param_permutation
 
     def _pick_rand_exemplars(self, binned_instances):
-        exemplars = {} # todo exemplar pick strategy
+        exemplar_instances = [] # todo exemplar pick strategy
+        exemplar_class_labels = []
         remaining_binned_instances = {}
         for class_label in binned_instances.keys():
             instances_bin = binned_instances[class_label]
@@ -183,10 +191,9 @@ class ProximityTree(Randomised, BaseEstimator, ClassifierMixin):
                 instance = instances_bin[instance_index]
                 remaining_instances_bin.append(instance)
             remaining_binned_instances[class_label] = remaining_instances_bin
-            if class_label not in exemplars.keys():
-                exemplars[class_label] = []
-            exemplars[class_label].append(exemplar)
-        return exemplars, remaining_binned_instances
+            exemplar_instances.append(exemplar)
+            exemplar_class_labels.append(class_label)
+        return exemplar_instances, exemplar_class_labels, remaining_binned_instances
 
     def set_params(self, **params):
         super(ProximityTree, self).set_params(**params)
