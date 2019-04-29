@@ -17,6 +17,8 @@ class Randomised(Parameterised):
 
     def set_params(self, **params):
         rand_state = params.get(self.rand_state_key)
+        if isinstance(rand_state, int):
+            rand_state = np.random.RandomState(rand_state).get_state()
         if rand_state is None:
             rand_state = params.get(self.init_rand_state_key)
         if rand_state is None:
