@@ -1,5 +1,6 @@
 import numpy as np
 
+# todo no need for class
 
 class Utilities:
     'Utilities for common behaviour'
@@ -22,21 +23,90 @@ class Utilities:
         return stdp
 
     @staticmethod
-    def arg_min(array, rand):
-        return rand.choice(Utilities.arg_min(array))
-
-    @staticmethod
-    def arg_min(array):
-        min_indices = [0]
-        min = array[0]
+    def arg_bests(array, comparator):
+        indices = [0]
+        best = array[0]
         for index in range(1, len(array)):
             value = array[index]
-            if value <= min:
-                if value < min:
-                    min_indices = []
-                    min = value
-                min_indices.append(index)
-        return min_indices
+            comparison_result = comparator(value, best)
+            if comparison_result >= 0:
+                if comparison_result > 0:
+                    indices = []
+                    best = value
+                indices.append(index)
+        return indices
+
+    @staticmethod
+    def pick_from_indices(array, indices):
+        picked = []
+        for index in indices:
+            picked.append(array[index])
+        return picked
+
+    @staticmethod
+    def bests(array, comparator):
+        indices = Utilities.arg_best(array, comparator)
+        return Utilities.pick_from_indices(array, indices)
+
+    @staticmethod
+    def mins(array):
+        indices = Utilities.arg_mins(array)
+        return Utilities.pick_from_indices(array, indices)
+
+    @staticmethod
+    def maxs(array):
+        indices = Utilities.arg_maxs(array)
+        return Utilities.pick_from_indices(array, indices)
+
+    @staticmethod
+    def min(array, rand):
+        index = Utilities.arg_min(array, rand)
+        return array[index]
+
+    @staticmethod
+    def max(array, rand):
+        index = Utilities.arg_max(array, rand)
+        return array[index]
+
+    @staticmethod
+    def best(array, comparator, rand):
+        return rand.choice(Utilities.bests(array, comparator))
+
+    @staticmethod
+    def arg_best(array, comparator, rand):
+        return rand.choice(Utilities.arg_bests(array, comparator))
+
+    @staticmethod
+    def arg_min(array, rand):
+        return rand.choice(Utilities.arg_mins(array))
+
+    @staticmethod
+    def arg_mins(array):
+        return Utilities.arg_bests(array, Utilities.less_than)
+
+    @staticmethod
+    def arg_max(array, rand):
+        return rand.choice(Utilities.arg_maxs(array))
+
+    @staticmethod
+    def arg_maxs(array):
+        return Utilities.arg_bests(array, Utilities.more_than)
+
+    def less_than(a, b):
+        if b < a:
+            return -1
+        elif b > a:
+            return 1
+        else:
+            return 0
+
+    def more_than(a, b):
+        if b < a:
+            return 1
+        elif b > a:
+            return -1
+        else:
+            return 0
 
     @staticmethod
     def bin_instances_by_class(instances, class_labels):
@@ -50,3 +120,4 @@ class Utilities:
             instances_bin = bins[class_label]
             instances_bin.append(instance)
         return bins
+

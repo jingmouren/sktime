@@ -87,30 +87,38 @@ class ProximityTree(Randomised, BaseEstimator):
         self._unique_class_labels = None
         super().__init__(**params)
 
-    def _predict_proba_inst(self, instance): # todo recursive, needs to be converted to iterative
+    def predict_proba_inst(self, instance): # todo recursive, needs to be converted to iterative
         closest_exemplar_index = self._find_closest_exemplar_index(self._split[self._exemplar_instances_key],
                                                                    self._split[self._distance_measure_key],
                                                                    instance,
                                                                    self._split[self._param_perm_key],)
+        # if end of tree / leaf
         if self._branches[closest_exemplar_index] is None:
-            # return closest exemplar class label
+            # return majority vote distribution
             distribution = np.zeros((len(self._unique_class_labels)))
             predicted_class = self._split[self._exemplar_class_labels_key][closest_exemplar_index]
-            raise Exception('not finished') # todo what should this return? dict? arr?
+            distribution[predicted_class] += 1
+            return distribution
         else:
-            return self._branches[closest_exemplar_index]._predict_proba_inst(instance)
+            return self._branches[closest_exemplar_index].predict_proba_inst(instance)
 
     def predict_proba(self, instances):
         num_instances = instances.shape[0]
-        predictions = []
+        distributions = np.empty((num_instances, len(self._unique_class_labels)))
         for instance_index in range(0, num_instances):
             instance = instances.iloc[instance_index, :]
-            prediction = self._predict_proba_inst(instance)
-            predictions.append(prediction)
-        return predictions
+            prediction = self.predict_proba_inst(instance)
+            distributions[instance_index] = prediction
+        return distributions
 
     def predict(self, instances):
-        pass
+        distributions = self.predict_proba(instances)
+        predictions = np.empty((distributions.shape[0]))
+        for instance_index in range(0, predictions.shape[0]):
+            distribution = distributions[instance_index]
+            prediction = Utilities.max(distribution, self.get_rand())
+            predictions[instance_index] = prediction
+        return predictions
 
     def fit(self, instances, class_labels):
         self._unique_class_labels = np.unique(class_labels)
