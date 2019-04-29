@@ -64,8 +64,8 @@ class ProximityTree(Randomised, BaseEstimator):
         return 'stop-splitting'
 
     @staticmethod
-    def get_gain_key():
-        return 'gain'
+    def get_gain_method_key():
+        return 'gain_method'
 
     @staticmethod
     def get_param_pool_obtainer_key():
@@ -116,12 +116,12 @@ class ProximityTree(Randomised, BaseEstimator):
         return pure
 
     def __init__(self, **params):
-        self._gain = None
-        self._stop_splitting = None
+        self.gain_method = None
+        self.stop_splitting = None
         self._param_pool = None
-        self._param_pool_obtainer = None
+        self.param_pool_obtainer = None
         self._branches = None
-        self._r = None
+        self.r = None
         self._split = None
         self._unique_class_labels = None
         super().__init__(**params)
@@ -162,7 +162,7 @@ class ProximityTree(Randomised, BaseEstimator):
     def fit(self, instances, class_labels):
         self._unique_class_labels = np.unique(class_labels)
         binned_instances = Utilities.bin_instances_by_class(instances, class_labels)
-        param_pool = self._param_pool_obtainer(instances)
+        param_pool = self.param_pool_obtainer(instances)
         self._branch(binned_instances, param_pool) # todo err check on params + class params too
         return self
 
@@ -173,7 +173,7 @@ class ProximityTree(Randomised, BaseEstimator):
         # print(self._split)
         self._branches = []
         for exemplar_bin in self._split[self._get_exemplar_bins_key()]:
-            if not self._stop_splitting(exemplar_bin):
+            if not self.stop_splitting(exemplar_bin):
                 tree = ProximityTree(**self.get_params()) # duplicate this tree config
                 self._branches.append(tree)
                 tree._branch(exemplar_bin, param_pool)
@@ -195,10 +195,10 @@ class ProximityTree(Randomised, BaseEstimator):
     def _get_best_split(self, binned_instances):
         split = self._pick_rand_split(binned_instances)
         # print(split[self._get_gain_value_key()])
-        if self._r > 0:
+        if self.r > 0:
             splits = [split]
             best_gain = split[self._get_gain_value_key()]
-            for index in range(0, self._r):
+            for index in range(0, self.r):
                 other_split = self._pick_rand_split(binned_instances)
                 other_gain = other_split[self._get_gain_value_key()]
                 # format_str = '{: 1.8f}'
@@ -232,7 +232,7 @@ class ProximityTree(Randomised, BaseEstimator):
             for instance in instances_bin:
                 closest_exemplar_index = self._find_closest_exemplar_index(exemplar_instances, distance_measure, instance, param_perm)
                 exemplar_bins[closest_exemplar_index][class_label].append(instance)
-        gain = self._gain(binned_instances, *exemplar_bins)
+        gain = self.gain_method(binned_instances, *exemplar_bins)
         return {
             self._get_exemplar_instances_key(): exemplar_instances, # todo unpack into split class with functionality for predicting
             self._get_exemplar_class_labels_key(): exemplar_class_labels,
@@ -301,17 +301,17 @@ class ProximityTree(Randomised, BaseEstimator):
 
     def set_params(self, **params):
         super(ProximityTree, self).set_params(**params)
-        super(ProximityTree, self)._set_param(self.get_gain_key(), self.get_default_gain(), params, prefix='_')
+        super(ProximityTree, self)._set_param(self.get_gain_method_key(), self.get_default_gain(), params, prefix='_')
         super(ProximityTree, self)._set_param(self.get_r_key(), self.get_default_r(), params, prefix='_')
         super(ProximityTree, self)._set_param(self.get_param_pool_obtainer_key(), self.get_default_param_pool_obtainer(), params, prefix='_')
         super(ProximityTree, self)._set_param(self.get_stop_splitting_key(), self.get_default_stop_splitting(), params, prefix='_')
 
     def get_params(self, deep=False):
         return {
-            ProximityTree.get_gain_key(): self._gain,
-            ProximityTree.get_r_key(): self._r,
-            ProximityTree.get_param_pool_obtainer_key(): self._param_pool_obtainer,
-            ProximityTree.get_stop_splitting_key(): self._stop_splitting,
+            ProximityTree.get_gain_method_key(): self.gain_method,
+            ProximityTree.get_r_key(): self.r,
+            ProximityTree.get_param_pool_obtainer_key(): self.param_pool_obtainer,
+            ProximityTree.get_stop_splitting_key(): self.stop_splitting,
             **super(ProximityTree, self).get_params(),
         }
 
