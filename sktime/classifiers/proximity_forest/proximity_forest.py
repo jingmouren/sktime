@@ -1,7 +1,10 @@
 from sklearn.base import BaseEstimator
+from sklearn.preprocessing import normalize
 
-from classifiers.proximity_forest.proximity_tree import ProximityTree
+from classifiers.proximity_forest.proximity_tree import ProximityTree, get_default_param_pool
 from classifiers.proximity_forest.randomised import Randomised
+from classifiers.proximity_forest.split_score import gini
+from classifiers.proximity_forest.stopping_condition import pure
 from classifiers.proximity_forest.utilities import Utilities
 from datasets import load_gunpoint
 import numpy as np
@@ -9,31 +12,27 @@ import numpy as np
 # todo checks on num tree, r, + prox tree fields
 # todo gain method
 # todo stopping condition (for splits)
+# todo duck typing
 # todo replace lists with np arrays where poss + on prox tree
+# todo tree depth? basically stopping criteria
 
 class ProximityForest(Randomised, BaseEstimator):
 
-    @staticmethod
-    def get_num_trees_key():
-        return 'num_trees'
-
-    @staticmethod
-    def _get_trees_key():
-        return 'trees'
-
-    def __init__(self, **params):
-        self.num_trees = None
-        self._trees = None
+    def __init__(self,
+                 gain_method = gini,
+                 r = 1,
+                 num_trees = 100,
+                 rand = np.random.RandomState(),
+                 stop_splitting = pure,
+                 param_pool_obtainer = get_default_param_pool):
+        self.gain_method = gain_method
+        self.r = r
+        self._rand = rand
+        self.num_trees = num_trees
+        self.stop_splitting = stop_splitting
+        self.param_pool_obtainer = param_pool_obtainer
+        # below set in fit method
         self._unique_class_labels = None
-        super(ProximityForest, self).__init__(**params)
-
-    def get_params(self):
-        return {
-            self.get_num_trees_key(): self.num_trees
-        }
-
-    def set_params(self, **params):
-        raise NotImplementedError()
 
     def fit(self, instances, class_labels):
         self._unique_class_labels = np.unique(class_labels)
@@ -44,22 +43,30 @@ class ProximityForest(Randomised, BaseEstimator):
             tree.fit(instances, class_labels)
 
     def predict(self, instances):
-        pass
+        predict_probas = self.predict_proba(instances)
+        predicts = np.empty((instances.shape[0]))
+        for index in range(0, predict_probas[0]):
+            prediction = Utilities.arg_max(predict_probas, self._rand)
+            predicts[index] = prediction
+        return predicts
+
 
     def predict_proba(self, instances):
-        for instance_index in len
-
-
-        votes = np.zeros(len(self._unique_class_labels))
-        for tree_index in range(0, len(self._trees)):
+        overall_predict_probas = np.zeros((instances.shape[0], len(self._unique_class_labels)))
+        for tree_index in range(0, len(self._trees) - 1):
             tree = self._trees[tree_index]
-            distributions = tree.predict_proba(instances)
-            for distribution in distributions:
-                prediction = Utilities.max(distribution, self.get_rand())
-                votes[tre[prediction] += 1
+            predict_probas = tree.predict_proba(instances)
+            for instance_index in range(0, predict_probas.shape[0]):
+                predict_proba = predict_probas[instance_index]
+                max_index = Utilities.arg_max(predict_proba, self._rand)
+                overall_predict_probas[instance_index][max_index] = 1
+        for instance_index in range(0, overall_predict_probas.shape[0]):
+            predict_proba = overall_predict_probas[instance_index]
+            normalize(predict_proba, copy=False)
+        return overall_predict_probas
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
     # a = np.array([2,2,2,2], dtype=float)
     # b = np.array([3,5,1,5], dtype=float)
     # a = a.reshape((4,1))

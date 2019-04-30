@@ -1,76 +1,121 @@
 from scipy.stats import rv_continuous, rv_discrete
+from sklearn.base import BaseEstimator
+from sklearn.preprocessing import normalize
 
 from classifiers.proximity_forest.randomised import Randomised
 import numpy as np
 
 from classifiers.proximity_forest.utilities import Utilities
+from utils.transformations import tabularise
 
 
-class Split(Randomised):
+class Split(BaseEstimator):
 
-    def __init__(self, **params):
-        self._distance_measure_params = None
-        self._exemplars = None
-        self._distance_measure = None
-        self._bins = None
-        self._gain = None
-        super(Split, self).__init__(**params)
+    def __init__(self,
+                 pick_exemplars_method = None,
+                 param_perm = None,
+                 gain_method = None,
+                 rand = np.random.RandomState):
+        self.param_perm = param_perm
+        self.gain_method = gain_method
+        self.pick_exemplars_method = pick_exemplars_method
+        self._rand = rand
+        self._distances = None
+        self.exemplar_instances = None
+        self.exemplar_class_labels = None
+        self.remaining_instances = None
+        self.remaining_class_labels = None
+        self.branch_instances = None
+        self.branch_class_labels = None
+        self._unique_class_labels = None
+        self.distance_measure_param_perm = None
+        self.distance_measure = None
+        self.gain = None
 
-    def get_params(self):
-        raise Exception('not implemented')
+    # todo mixin
+    # todo checks
+    # todo fit return self
+    # todo python built in methods for class
+    # todo score
+    # todo diff between static method + class method with cls param - is that just self?
+    # todo return class label from predict, not index!
 
-    def get_exemplars(self):
-        return self._exemplars
+    @staticmethod
+    def get_distance_measure_key():
+        return 'dm'
 
-    def get_distance_measure(self):
-        raise Exception('not implemented')
+    def fit(self, instances, class_labels):
+        # todo none checks
+        if callable(self.param_perm):
+            self.param_perm = self.param_perm(instances)
+        if self.distance_measure is None:
+            key = self.get_distance_measure_key()
+            self.distance_measure = self.param_perm[key]
+            del self.param_perm[key]
+        self.exemplar_instances, self.exemplar_class_labels, self.remaining_instances, self.remaining_instances = \
+            self.pick_exemplars_method(instances, class_labels, self._rand)
+        distances = self.exemplar_distances(self.remaining_instances)
+        self.exemplar_class_labels = []
+        num_exemplars = len(self.exemplar_instances)
+        self.branch_instances = [None] * num_exemplars
+        num_instances = instances.shape[0]
+        for instance_index in np.arange(num_instances):
+            exemplar_distances = distances[instance_index]
+            instance = instances.iloc[instance_index, :]
+            class_label = class_labels[instance_index]
+            closest_exemplar_index = Utilities.arg_min(exemplar_distances, self._rand)
+            self.branch_instances[closest_exemplar_index].append(instance)
+            self.exemplar_class_labels[closest_exemplar_index].append(class_label)
+        self.gain = self.gain_method(class_labels, self.branch_class_labels)
+        self._unique_class_labels = np.unique(class_labels)
+        return self
 
-    def set_params(self, **params):
-        super(Split, self).set_params(**params)
-        params = params.copy()
-        self._distance_measure = params.pop(self.distance_measure_key)
-        self._exemplars = params.pop(self.exemplars_key)
-        self._distance_measure_params = params
+    def exemplar_distances(self, instances):
+        num_instances = instances.shape[0]
+        num_exemplars = len(self.exemplar_instances)
+        overall_distances = np.zeros((num_instances, num_exemplars))
+        for instance_index in np.arange(num_instances):
+            instance = instances.iloc[instance_index, :]
+            distances = np.zeros(num_exemplars)
+            overall_distances[instance_index] = distances
+            for exemplar_index in np.arange(num_exemplars):
+                exemplar = self.exemplar_instances[exemplar_index]
+                distance = self._find_distance(exemplar, instance)
+                distances[exemplar_index] = distance
+        return overall_distances
 
-    exemplars_key = 'exemplars'
-    exemplar_instance_key = 'exemplar_instance'
-    exemplar_class_key = 'exemplar_class'
-    distance_measure_key = 'dm'
+    def predict_proba(self, instances):
+        num_instances = instances.shape[0]
+        num_exemplars = len(self.exemplar_instances)
+        num_unique_class_labels = len(self._unique_class_labels)
+        distributions = np.empty((num_instances, num_unique_class_labels))
+        distances = self.exemplar_distances(instances)
+        for instance_index in np.arange(num_instances):
+            distribution = np.zeros(num_unique_class_labels)
+            distributions[instance_index] = distribution
+            for exemplar_index in np.arange(num_exemplars):
+                distance = distances[instance_index][exemplar_index]
+                exemplar_class_label = self.exemplar_class_labels[exemplar_index]
+                distribution[exemplar_class_label - 1] -= distance
+            max_distance = -np.min(distribution)
+            for exemplar_index in range(0, num_exemplars - 1):
+                distribution[exemplar_index] += max_distance
+        normalize(distributions, copy=False)
+        return distributions
 
-    def get_bins(self):
-        return self._bins
+    def predict(self, instances):
+        num_instances = instances.shape[0]
+        distributions = self.predict_proba(instances)
+        predictions = np.empty(num_instances)
+        for instance_index in range(0, num_instances):
+            distribution = distributions[instance_index]
+            prediction = Utilities.arg_max(distribution, self._rand)
+            predictions[instance_index] = prediction
+        return predictions
 
-    def get_gain(self):
-        return self._gain
-
-    def split(self, instance_bins):
-        bins = {}
-        for index in range(0, len(self._exemplars)):
-            bins[index] = {}
-        for class_label in instance_bins.keys():
-            for index in range(0, len(self._exemplars)):
-                bins[index][class_label] = []
-            instance_bin = instance_bins[class_label]
-            for instance in instance_bin:
-                index = self.find_closest_exemplar_index(instance)
-                bins[index][class_label].append(instance)
-        self._bins = bins
-        self._gain = self._find_gain()
-
-    def _find_gain(self):
-        return -1 # todo
-
-    def find_closest_exemplar_index(self, instance):
-        closest_exemplars_indices = []
-        min_distance = np.Infinity
-        for index in range(0, len(self._exemplars)):
-            exemplar_entry = self._exemplars[index]
-            exemplar = exemplar_entry[self.exemplar_instance_key]
-            distance = self._distance_measure(exemplar, instance, **self._distance_measure_params)
-            if distance <= min_distance:
-                if distance < min_distance:
-                    closest_exemplars_indices.clear()
-                closest_exemplars_indices.append(index)
-        closest_exemplar_index = self.get_rand().choice(closest_exemplars_indices)
-        return closest_exemplar_index
-
+    def _find_distance(self, instance_a, instance_b):
+        instance_a = tabularise(instance_a, return_array=True)
+        instance_b = tabularise(instance_b, return_array=True)
+        instance_a = np.transpose(instance_a)
+        instance_b = np.transpose(instance_b)
+        return self.distance_measure(instance_a, instance_b, **self.distance_measure_param_perm)

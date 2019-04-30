@@ -1,5 +1,6 @@
 import numpy as np
 
+
 # todo no need for class
 
 class Utilities:
@@ -121,3 +122,13 @@ class Utilities:
             instances_bin.append(instance)
         return bins
 
+    @staticmethod
+    def max_instance_length(instances):
+        num_instances = instances.shape[0]
+        max = -1
+        for instance_index in range(0, num_instances):
+            for dim_index in range(0, instances.shape[1]):
+                instance = instances.iloc[instance_index, dim_index]
+                if len(instance) > max:
+                    max = len(instance)
+        return max

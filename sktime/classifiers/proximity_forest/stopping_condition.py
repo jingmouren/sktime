@@ -1,9 +1,5 @@
-def pure(self, node): # can we drop the self param? it's needless
-    non_zero = False
-    for class_label, instances in node.items():
-        if len(instances) > 0:
-            if non_zero:
-                return False
-            else:
-                non_zero = True
-    return True
+import numpy as np
+
+def pure(class_labels):
+    unique_class_labels = np.unique(class_labels)
+    return len(unique_class_labels) <= 1
