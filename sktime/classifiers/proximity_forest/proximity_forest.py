@@ -1,12 +1,10 @@
-from sklearn.base import BaseEstimator
 from sklearn.preprocessing import normalize
 
+from utils.classifier import Classifier
 from classifiers.proximity_forest.proximity_tree import ProximityTree, get_default_param_pool
-from classifiers.proximity_forest.randomised import Randomised
 from classifiers.proximity_forest.split_score import gini
 from classifiers.proximity_forest.stopping_condition import pure
-from classifiers.proximity_forest.utilities import Utilities
-from datasets import load_gunpoint
+from utils.utilities import Utilities
 import numpy as np
 
 # todo checks on num tree, r, + prox tree fields
@@ -15,8 +13,9 @@ import numpy as np
 # todo duck typing
 # todo replace lists with np arrays where poss + on prox tree
 # todo tree depth? basically stopping criteria
+# todo pycharm presets, e.g. auto optimise imports
 
-class ProximityForest(Randomised, BaseEstimator):
+class ProximityForest(Classifier):
 
     def __init__(self,
                  gain_method = gini,
@@ -25,6 +24,7 @@ class ProximityForest(Randomised, BaseEstimator):
                  rand = np.random.RandomState(),
                  stop_splitting = pure,
                  param_pool_obtainer = get_default_param_pool):
+        super(Classifier, self).__init__()
         self.gain_method = gain_method
         self.r = r
         self._rand = rand
@@ -41,15 +41,7 @@ class ProximityForest(Randomised, BaseEstimator):
             tree = ProximityTree(**self.get_params())
             self._trees[tree_index] = tree
             tree.fit(instances, class_labels)
-
-    def predict(self, instances):
-        predict_probas = self.predict_proba(instances)
-        predicts = np.empty((instances.shape[0]))
-        for index in range(0, predict_probas[0]):
-            prediction = Utilities.arg_max(predict_probas, self._rand)
-            predicts[index] = prediction
-        return predicts
-
+        return self
 
     def predict_proba(self, instances):
         overall_predict_probas = np.zeros((instances.shape[0], len(self._unique_class_labels)))
