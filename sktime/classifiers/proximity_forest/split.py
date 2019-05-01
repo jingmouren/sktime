@@ -39,7 +39,6 @@ class Split(Classifier):
 
     def fit(self, instances, class_labels):
         check_data(instances, class_labels)
-        print(type(self.param_perm))
         if callable(self.param_perm):
             self.param_perm = self.param_perm(instances)
         if not isinstance(self.param_perm, dict):
@@ -58,17 +57,23 @@ class Split(Classifier):
         self.exemplar_instances, self.exemplar_class_labels, self.remaining_instances, self.remaining_class_labels = \
             self.pick_exemplars_method(instances, class_labels, self.rand)
         distances = self.exemplar_distances(self.remaining_instances)
-        self.exemplar_class_labels = []
         num_exemplars = len(self.exemplar_instances)
-        self.branch_instances = [None] * num_exemplars
-        num_instances = instances.shape[0]
+        self.branch_class_labels = np.empty(num_exemplars, dtype=object)
+        self.branch_instances = np.empty(num_exemplars, dtype=object)
+        for index in np.arange(num_exemplars):
+            self.branch_instances[index] = []
+            self.branch_class_labels[index] = []
+        num_instances = self.remaining_instances.shape[0]
         for instance_index in np.arange(num_instances):
             exemplar_distances = distances[instance_index]
-            instance = instances.iloc[instance_index, :]
-            class_label = class_labels[instance_index]
+            instance = self.remaining_instances.iloc[instance_index, :]
+            class_label = self.remaining_class_labels[instance_index]
             closest_exemplar_index = utilities.arg_min(exemplar_distances, self.rand)
             self.branch_instances[closest_exemplar_index].append(instance)
-            self.exemplar_class_labels[closest_exemplar_index].append(class_label)
+            self.branch_class_labels[closest_exemplar_index].append(class_label)
+        for index in np.arange(self.branch_class_labels.shape[0]):
+            self.branch_class_labels[index] = np.array(self.branch_class_labels[index])
+            self.branch_instances[index] = DataFrame(self.branch_instances[index])
         self.gain = self.gain_method(class_labels, self.branch_class_labels)
         self._unique_class_labels = np.unique(class_labels)
         return self
