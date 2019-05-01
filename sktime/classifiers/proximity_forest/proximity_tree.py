@@ -2,6 +2,7 @@ from numpy.ma import floor
 from scipy.stats import uniform, randint
 import numpy as np
 from sklearn.base import clone
+from sklearn.preprocessing import LabelEncoder
 
 from utils import utilities
 from utils.classifier import Classifier
@@ -17,7 +18,7 @@ from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, 
 # todo comment up!
 # todo mixin
 # todo score
-# todo return class label from predict, not index? Use label thing tony found
+# todo return class label from predict, not index? Use label thing tony found - labels currently strings D:
 
 from utils.utilities import check_data
 
@@ -131,6 +132,7 @@ class ProximityTree(Classifier):
                  rand=np.random.RandomState(),
                  is_leaf_method=pure,
                  level=0,
+                 label_encoder=None,
                  pick_exemplars_method=pick_rand_exemplars,
                  param_pool=get_default_param_pool):
         super().__init__(rand=rand)
@@ -138,18 +140,18 @@ class ProximityTree(Classifier):
         self.r = r
         self.max_depth = max_depth
         self.level = level
+        self.label_encoder = label_encoder
         self.pick_exemplars_method = pick_exemplars_method
         self.is_leaf_method = is_leaf_method
         self.param_pool = param_pool
         # vars set in the fit method
         self._branches = None
         self._split = None
-        self._unique_class_labels = None
 
     def predict_proba(self, instances):
         check_data(instances)
         num_instances = instances.shape[0]
-        distributions = np.empty((num_instances, len(self._unique_class_labels)))
+        distributions = np.empty((num_instances, len(self.label_encoder.classes_)))
         for instance_index in range(0, num_instances):
             instance = instances.iloc[instance_index, :]
             tree = self
@@ -158,14 +160,13 @@ class ProximityTree(Classifier):
                 distances = tree._split.exemplar_distance_inst(instance)
                 closest_exemplar_index = utilities.arg_min(distances, tree._rand)
                 tree = tree._branches[closest_exemplar_index]
-            prediction = np.zeros(len(self._unique_class_labels))
+            prediction = np.zeros(len(self.label_encoder.classes_))
             closest_exemplar_class_label = tree._split.branch_class_labels[closest_exemplar_index]
             prediction[closest_exemplar_class_label] += 1
             distributions[instance_index] = prediction
         return distributions
 
     def _branch(self, instances, class_labels):
-        self._unique_class_labels = np.unique(class_labels)  # todo is this needed?
         self._split = self._get_best_split(instances, class_labels)
         num_branches = len(self._split.exemplar_instance_bins)
         self._branches = np.empty(num_branches)
@@ -174,6 +175,7 @@ class ProximityTree(Classifier):
                 exemplar_class_labels = self._split.exemplar_class_labels_bins[branch_index]
                 if not self.is_leaf_method(exemplar_class_labels):
                     tree = clone(self)
+                    tree.label_encoder = self.label_encoder
                     tree.depth = self.level + 1
                     self._branches[branch_index] = tree
                 else:
@@ -197,6 +199,10 @@ class ProximityTree(Classifier):
             self.param_pool = self.param_pool(instances)
         if not isinstance(self.rand, np.random.RandomState):
             raise ValueError('rand not set to a random state')
+        if self.label_encoder is None:
+            self.label_encoder = LabelEncoder()
+            self.label_encoder.fit(class_labels)
+        class_labels = self.label_encoder.transform(class_labels)
         tree_stack = [self]
         instances_stack = [instances]
         class_labels_stack = [class_labels]
@@ -229,7 +235,7 @@ class ProximityTree(Classifier):
 
     def _get_best_split(self, instances, class_labels):
         splits = np.empty(self.r)
-        for index in range(0, self.r):
+        for index in np.arange(self.r):
             split = self._pick_rand_split(instances, class_labels)
             splits[index] = split
         best_split = utilities.best(splits, lambda a, b: b.gain - a.gain, self.rand)

@@ -1,5 +1,5 @@
 from pandas import DataFrame, Series
-from sklearn.preprocessing import normalize
+from sklearn.preprocessing import normalize, LabelEncoder
 
 from utils import utilities
 from utils.classifier import Classifier
@@ -15,6 +15,7 @@ class Split(Classifier):
                  pick_exemplars_method = None,
                  param_perm = None,
                  gain_method = None,
+                 label_encoder = None,
                  rand = np.random.RandomState):
         super().__init__(rand=rand)
         self.param_perm = param_perm
@@ -28,10 +29,10 @@ class Split(Classifier):
         self.remaining_class_labels = None
         self.branch_instances = None
         self.branch_class_labels = None
-        self._unique_class_labels = None
         self.distance_measure_param_perm = None
         self.distance_measure = None
         self.gain = None
+        self.label_encoder = label_encoder
 
     @staticmethod
     def get_distance_measure_key():
@@ -49,11 +50,15 @@ class Split(Classifier):
             raise ValueError("gain method must be callable")
         if not isinstance(self.rand, np.random.RandomState):
             raise ValueError('rand not set to a random state')
+        if self.label_encoder is None:
+            self.label_encoder = LabelEncoder()
+            self.label_encoder.fit(class_labels)
         if self.distance_measure is None:
             key = self.get_distance_measure_key()
             self.distance_measure = self.param_perm[key]
             self.distance_measure_param_perm = self.param_perm.copy()
             del self.distance_measure_param_perm[key]
+        class_labels = self.label_encoder.transform(class_labels)
         self.exemplar_instances, self.exemplar_class_labels, self.remaining_instances, self.remaining_class_labels = \
             self.pick_exemplars_method(instances, class_labels, self.rand)
         distances = self.exemplar_distances(self.remaining_instances)
@@ -75,7 +80,6 @@ class Split(Classifier):
             self.branch_class_labels[index] = np.array(self.branch_class_labels[index])
             self.branch_instances[index] = DataFrame(self.branch_instances[index])
         self.gain = self.gain_method(class_labels, self.branch_class_labels)
-        self._unique_class_labels = np.unique(class_labels)
         return self
 
     def exemplar_distances(self, instances):
@@ -104,7 +108,7 @@ class Split(Classifier):
         check_data(instances)
         num_instances = instances.shape[0]
         num_exemplars = len(self.exemplar_instances)
-        num_unique_class_labels = len(self._unique_class_labels)
+        num_unique_class_labels = len(self.label_encoder.classes_)
         distributions = np.empty((num_instances, num_unique_class_labels))
         distances = self.exemplar_distances(instances)
         for instance_index in np.arange(num_instances):
