@@ -1,11 +1,12 @@
 from pandas import DataFrame, Series
 from sklearn.preprocessing import normalize
 
+from utils import utilities
 from utils.classifier import Classifier
 import numpy as np
 
-from utils.utilities import Utilities
 from utils.transformations import tabularise
+from utils.utilities import check_data
 
 
 class Split(Classifier):
@@ -15,11 +16,10 @@ class Split(Classifier):
                  param_perm = None,
                  gain_method = None,
                  rand = np.random.RandomState):
-        super(Classifier, self).__init__()
+        super(Classifier, self).__init__(rand=rand)
         self.param_perm = param_perm
         self.gain_method = gain_method
         self.pick_exemplars_method = pick_exemplars_method
-        self._rand = rand
         # vars set in the fit method
         self._distances = None
         self.exemplar_instances = None
@@ -38,13 +38,14 @@ class Split(Classifier):
         return 'dm'
 
     def fit(self, instances, class_labels):
+        check_data(instances, class_labels)
         if not isinstance(self.param_perm, dict) or not callable(self.param_perm): # todo empty?
             raise ValueError("parameter permutation must be a dict or callable to obtain dict")
         if not callable(self.gain_method):
             raise ValueError("gain method must be callable")
         if not callable(self.pick_exemplars_method):
             raise ValueError("gain method must be callable")
-        if not isinstance(self._rand, np.random.RandomState):
+        if not isinstance(self.rand, np.random.RandomState):
             raise ValueError('rand not set to a random state')
         if callable(self.param_perm):
             self.param_perm = self.param_perm(instances)
@@ -53,7 +54,7 @@ class Split(Classifier):
             self.distance_measure = self.param_perm[key]
             del self.param_perm[key]
         self.exemplar_instances, self.exemplar_class_labels, self.remaining_instances, self.remaining_class_labels = \
-            self.pick_exemplars_method(instances, class_labels, self._rand)
+            self.pick_exemplars_method(instances, class_labels, self.rand)
         distances = self.exemplar_distances(self.remaining_instances)
         self.exemplar_class_labels = []
         num_exemplars = len(self.exemplar_instances)
@@ -63,7 +64,7 @@ class Split(Classifier):
             exemplar_distances = distances[instance_index]
             instance = instances.iloc[instance_index, :]
             class_label = class_labels[instance_index]
-            closest_exemplar_index = Utilities.arg_min(exemplar_distances, self._rand)
+            closest_exemplar_index = utilities.arg_min(exemplar_distances, self.rand)
             self.branch_instances[closest_exemplar_index].append(instance)
             self.exemplar_class_labels[closest_exemplar_index].append(class_label)
         self.gain = self.gain_method(class_labels, self.branch_class_labels)
@@ -71,8 +72,7 @@ class Split(Classifier):
         return self
 
     def exemplar_distances(self, instances):
-        if not isinstance(instances, DataFrame):
-            raise ValueError("instances not in panda dataframe")
+        check_data(instances)
         num_instances = instances.shape[0]
         num_exemplars = len(self.exemplar_instances)
         overall_distances = np.zeros((num_instances, num_exemplars))
@@ -94,8 +94,7 @@ class Split(Classifier):
         return distances
 
     def predict_proba(self, instances):
-        if not isinstance(instances, DataFrame):
-            raise ValueError("instances not in panda dataframe")
+        check_data(instances)
         num_instances = instances.shape[0]
         num_exemplars = len(self.exemplar_instances)
         num_unique_class_labels = len(self._unique_class_labels)

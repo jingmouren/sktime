@@ -3,13 +3,12 @@ from scipy.stats import uniform, randint
 import numpy as np
 from sklearn.base import clone
 
+from utils import utilities
 from utils.classifier import Classifier
 from classifiers.proximity_forest.split import Split
-from utils.utilities import Utilities
 from datasets import load_gunpoint
 from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, wddtw_distance, wdtw_distance, \
     msm_distance
-
 
 # todo docs
 # todo ref paper
@@ -21,13 +20,16 @@ from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, 
 # todo score
 # todo diff between static method + class method with cls param - is that just self?
 # todo return class label from predict, not index!
+from utils.utilities import check_data
 
 
 def pure(class_labels):
     unique_class_labels = np.unique(class_labels)
     return len(unique_class_labels) <= 1
 
-def gini(parent_class_labels, children_class_labels): # todo make sure this outputs 1 (max) to 0 (min) as gini is usually other way around (i.e. 0 is pure, 1 is impure (or usually 0.5))
+
+def gini(parent_class_labels,
+         children_class_labels):  # todo make sure this outputs 1 (max) to 0 (min) as gini is usually other way around (i.e. 0 is pure, 1 is impure (or usually 0.5))
     root_score = _gini_node(parent_class_labels)
     parent_num_instances = parent_class_labels.shape[0]
     children_score_sum = 0
@@ -39,6 +41,7 @@ def gini(parent_class_labels, children_class_labels): # todo make sure this outp
         children_score_sum += child_score
     score = root_score - children_score_sum
     return score
+
 
 def _gini_node(class_labels):
     num_instances = class_labels.shape[0]
@@ -52,11 +55,14 @@ def _gini_node(class_labels):
             score -= np.math.pow(proportion, 2)
     return score
 
+
 def information_gain(parent_class_labels, children_class_labels):
     raise Exception('not implemented yet')
 
+
 def chi_squared(parent_class_labels, children_class_labels):
     raise Exception('not implemented yet')
+
 
 def pick_rand_exemplars(instances, class_labels, rand):
     instances = instances.copy(deep=True)
@@ -74,11 +80,13 @@ def pick_rand_exemplars(instances, class_labels, rand):
         class_labels.remove(index)
     return chosen_instances, chosen_class_labels, instances, class_labels
 
+
 def get_default_param_pool(instances):
-    instance_length = Utilities.max_instance_length(instances) # todo should this use the max instance length for unequal length dataset instances?
+    instance_length = utilities.max_instance_length(
+        instances)  # todo should this use the max instance length for unequal length dataset instances?
     max_raw_warping_window = floor((instance_length + 1) / 4)
     max_warping_window_percentage = max_raw_warping_window / instance_length
-    stdp = Utilities.stdp(instances)
+    stdp = utilities.stdp(instances)
     param_pool = [
         {Split.get_distance_measure_key(): [dtw_distance],
          'w': uniform(0, max_warping_window_percentage)},
@@ -111,21 +119,25 @@ def get_default_param_pool(instances):
     ]
     return param_pool
 
+
 class ProximityTree(Classifier):
 
     def __init__(self,
-                 gain_method = gini,
-                 r = 1,
-                 rand = np.random.RandomState(),
-                 stop_branching_method = pure,
-                 pick_exemplars_method = pick_rand_exemplars,
-                 param_pool = get_default_param_pool):
-        super(Classifier, self).__init__()
+                 gain_method=gini,
+                 r=1,
+                 max_depth=np.math.inf,
+                 rand=np.random.RandomState(),
+                 is_leaf_method=pure,
+                 level=None,
+                 pick_exemplars_method=pick_rand_exemplars,
+                 param_pool=get_default_param_pool):
+        super(Classifier, self).__init__(rand=rand)
         self.gain_method = gain_method
         self.r = r
-        self._rand = rand
+        self.max_depth = max_depth
+        self.level = level
         self.pick_exemplars_method = pick_exemplars_method
-        self.stop_branching_method = stop_branching_method
+        self.is_leaf_method = is_leaf_method
         self.param_pool = param_pool
         # vars set in the fit method
         self._param_pool = None
@@ -134,14 +146,16 @@ class ProximityTree(Classifier):
         self._unique_class_labels = None
 
     def predict_proba(self, instances):
+        check_data(instances)
         num_instances = instances.shape[0]
         distributions = np.empty((num_instances, len(self._unique_class_labels)))
         for instance_index in range(0, num_instances):
             instance = instances.iloc[instance_index, :]
             tree = self
+            closest_exemplar_index = -1
             while tree:
                 distances = tree._split.exemplar_distance_inst(instance)
-                closest_exemplar_index = Utilities.arg_min(distances, tree._rand)
+                closest_exemplar_index = utilities.arg_min(distances, tree._rand)
                 tree = tree._branches[closest_exemplar_index]
             prediction = np.zeros(len(self._unique_class_labels))
             closest_exemplar_class_label = tree._split.branch_class_labels[closest_exemplar_index]
@@ -150,30 +164,37 @@ class ProximityTree(Classifier):
         return distributions
 
     def _branch(self, instances, class_labels):
-        self._unique_class_labels = np.unique(class_labels) # todo is this needed?
+        self._unique_class_labels = np.unique(class_labels)  # todo is this needed?
         self._split = self._get_best_split(instances, class_labels)
         num_branches = len(self._split.exemplar_instance_bins)
         self._branches = np.empty(num_branches)
-        for branch_index in np.arange(num_branches):
-            exemplar_class_labels = self._split.exemplar_class_labels_bins[branch_index]
-            if not self.stop_branching_method(exemplar_class_labels):
-                tree = clone(self)
-                self._branches[branch_index] = tree
-            else:
-                self._branches[branch_index] = None
+        if self.level < self.max_depth:
+            for branch_index in np.arange(num_branches):
+                exemplar_class_labels = self._split.exemplar_class_labels_bins[branch_index]
+                if not self.is_leaf_method(exemplar_class_labels):
+                    tree = clone(self)
+                    tree.depth = self.level + 1
+                    self._branches[branch_index] = tree
+                else:
+                    self._branches[branch_index] = None
 
     def fit(self, instances, class_labels):
+        check_data(instances, class_labels)
+        if self.level is None or self.level < 1:
+            raise ValueError('depth cannot be less than 1 or None')
+        if self.max_depth < 0:
+            raise ValueError('max depth cannot be less than 0')
         if self.r < 1:
             raise ValueError('r cannot be less than 1')
         if not callable(self.gain_method):
             raise RuntimeError('gain method not callable')
         if not callable(self.pick_exemplars_method):
             raise RuntimeError('pick exemplars method not callable')
-        if not callable(self.stop_branching_method):
-            raise RuntimeError('stop splitting method not callable')
+        if not callable(self.is_leaf_method):
+            raise RuntimeError('is leaf method not callable')
         if callable(self.param_pool):
             self.param_pool = self.param_pool(instances)
-        if not isinstance(self._rand, np.random.RandomState):
+        if not isinstance(self.rand, np.random.RandomState):
             raise ValueError('rand not set to a random state')
         tree_stack = [self]
         instances_stack = [instances]
@@ -201,23 +222,22 @@ class ProximityTree(Classifier):
         #  ]
         if params is None:
             params = self._param_pool
-        param_pool = self._rand.choice(params)
+        param_pool = self.rand.choice(params)
         permutation = self._pick_param_permutation(param_pool)
         return permutation
 
     def _get_best_split(self, instances, class_labels):
-        splits = np.empty((self.r))
+        splits = np.empty(self.r)
         for index in range(0, self.r):
             split = self._pick_rand_split(instances, class_labels)
             splits[index] = split
-        compare_split_gain = lambda a, b: b.gain - a.gain
-        best_split = Utilities.best(splits, compare_split_gain, self._rand)
+        best_split = utilities.best(splits, lambda a, b: b.gain - a.gain, self.rand)
         return best_split
 
     def _pick_rand_split(self, instances, class_labels):
         param_perm = self._get_rand_param_perm()
         split = Split(pick_exemplars_method=self.pick_exemplars_method,
-                      rand=self._rand,
+                      rand=self.rand,
                       gain_method=self.gain_method,
                       param_perm=param_perm)
         split.fit(instances, class_labels)
@@ -227,18 +247,18 @@ class ProximityTree(Classifier):
         param_permutation = {}
         for param_name, param_values in param_pool.items():
             if isinstance(param_values, list):
-                param_value = self._rand.choice(param_values)
+                param_value = self.rand.choice(param_values)
                 if isinstance(param_value, dict):
                     param_value = self._get_rand_param_perm(param_value)
             elif hasattr(param_values, 'rvs'):
-                param_value = param_values.rvs(random_state=self._rand)
+                param_value = param_values.rvs(random_state=self.rand)
             else:
                 raise Exception('unknown type')
             param_permutation[param_name] = param_value
         return param_permutation
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     # a = np.array([2,2,2,2], dtype=float)
     # b = np.array([3,5,1,5], dtype=float)
     # a = a.reshape((4,1))
@@ -248,6 +268,5 @@ if __name__ == "__main__":
 
     x_train, y_train = load_gunpoint(split='TRAIN', return_X_y=True)
     x_test, y_test = load_gunpoint(split='TEST', return_X_y=True)
-    tree = ProximityTree(rand = np.random.RandomState(3), r = 1)
+    tree = ProximityTree(rand=np.random.RandomState(3), r=1)
     tree.fit(x_train, y_train)
-

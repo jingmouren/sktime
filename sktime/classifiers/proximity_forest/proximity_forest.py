@@ -1,19 +1,11 @@
 from sklearn.preprocessing import normalize
 
+from utils import utilities
 from utils.classifier import Classifier
-from classifiers.proximity_forest.proximity_tree import ProximityTree, get_default_param_pool
-from classifiers.proximity_forest.split_score import gini
-from classifiers.proximity_forest.stopping_condition import pure
-from utils.utilities import Utilities
+from classifiers.proximity_forest.proximity_tree import ProximityTree, get_default_param_pool, gini, pure
 import numpy as np
 
-# todo checks on num tree, r, + prox tree fields
-# todo gain method
-# todo stopping condition (for splits)
-# todo duck typing
-# todo replace lists with np arrays where poss + on prox tree
-# todo tree depth? basically stopping criteria
-# todo pycharm presets, e.g. auto optimise imports
+from utils.utilities import check_data
 
 class ProximityForest(Classifier):
 
@@ -22,51 +14,43 @@ class ProximityForest(Classifier):
                  r = 1,
                  num_trees = 100,
                  rand = np.random.RandomState(),
-                 stop_splitting = pure,
+                 is_leaf_method = pure,
+                 max_tree_depth = np.math.inf,
                  param_pool_obtainer = get_default_param_pool):
-        super(Classifier, self).__init__()
+        super(Classifier, self).__init__(rand=rand)
         self.gain_method = gain_method
         self.r = r
-        self._rand = rand
+        self.max_tree_depth = max_tree_depth
         self.num_trees = num_trees
-        self.stop_splitting = stop_splitting
+        self.is_leaf_method = is_leaf_method
         self.param_pool_obtainer = param_pool_obtainer
         # below set in fit method
+        self._trees = None
         self._unique_class_labels = None
 
     def fit(self, instances, class_labels):
+        check_data(instances, class_labels)
+        if self.num_trees < 1:
+            raise ValueError('number of trees cannot be less than 1')
         self._unique_class_labels = np.unique(class_labels)
-        self._trees = np.empty((self.num_trees))
+        self._trees = np.empty(self.num_trees)
         for tree_index in range(0, self.num_trees - 1):
-            tree = ProximityTree(**self.get_params())
+            tree = ProximityTree(**self.get_params(), level=0)
             self._trees[tree_index] = tree
             tree.fit(instances, class_labels)
         return self
 
     def predict_proba(self, instances):
+        check_data(instances)
         overall_predict_probas = np.zeros((instances.shape[0], len(self._unique_class_labels)))
         for tree_index in range(0, len(self._trees) - 1):
             tree = self._trees[tree_index]
             predict_probas = tree.predict_proba(instances)
             for instance_index in range(0, predict_probas.shape[0]):
                 predict_proba = predict_probas[instance_index]
-                max_index = Utilities.arg_max(predict_proba, self._rand)
+                max_index = utilities.arg_max(predict_proba, self.rand)
                 overall_predict_probas[instance_index][max_index] = 1
         for instance_index in range(0, overall_predict_probas.shape[0]):
             predict_proba = overall_predict_probas[instance_index]
             normalize(predict_proba, copy=False)
         return overall_predict_probas
-
-
-# if __name__ == "__main__":
-    # a = np.array([2,2,2,2], dtype=float)
-    # b = np.array([3,5,1,5], dtype=float)
-    # a = a.reshape((4,1))
-    # b = b.reshape((4,1))
-    # dist = lcss_distance(a, b, delta=1, epsilon=0.3)
-    # print(dist)
-
-    # x_train, y_train = load_gunpoint(split='TRAIN', return_X_y=True)
-    # x_test, y_test = load_gunpoint(split='TEST', return_X_y=True)
-    # tree = ProximityTree(**{Randomised.rand_state_key: 0})
-    # tree.fit(x_train, y_train)
