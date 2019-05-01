@@ -13,8 +13,9 @@ def check_data(instances, class_labels=None):
     if not isinstance(instances, DataFrame):
         raise ValueError("instances not in panda dataframe")
     if class_labels is not None:
-        # todo check size
-        raise NotImplementedError()
+        # todo these checks could probs be / is defined elsewhere
+        if len(class_labels) != instances.shape[0]:
+            raise ValueError("instances not same length as class_labels")
 
 def stdp(instances):
     sum = 0

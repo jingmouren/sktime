@@ -16,10 +16,9 @@ from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, 
 # todo unit tests
 # todo comment up!
 # todo mixin
-# todo python built in methods for class
 # todo score
-# todo diff between static method + class method with cls param - is that just self?
-# todo return class label from predict, not index!
+# todo return class label from predict, not index? Use label thing tony found
+
 from utils.utilities import check_data
 
 
@@ -131,7 +130,7 @@ class ProximityTree(Classifier):
                  level=None,
                  pick_exemplars_method=pick_rand_exemplars,
                  param_pool=get_default_param_pool):
-        super(Classifier, self).__init__(rand=rand)
+        super().__init__(rand=rand)
         self.gain_method = gain_method
         self.r = r
         self.max_depth = max_depth

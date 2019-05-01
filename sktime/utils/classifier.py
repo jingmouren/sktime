@@ -8,8 +8,8 @@ from utils.utilities import check_data
 
 class Classifier(BaseEstimator, ClassifierMixin):
     def __init__(self,
-                 rand=np.random.RandomState()):
-        super(BaseEstimator, self).__init__()
+                 rand=None):
+        super().__init__()
         self.rand = rand
 
     def predict_proba(self, instances):

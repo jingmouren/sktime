@@ -16,7 +16,7 @@ class Split(Classifier):
                  param_perm = None,
                  gain_method = None,
                  rand = np.random.RandomState):
-        super(Classifier, self).__init__(rand=rand)
+        super().__init__(rand=rand)
         self.param_perm = param_perm
         self.gain_method = gain_method
         self.pick_exemplars_method = pick_exemplars_method

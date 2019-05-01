@@ -17,7 +17,7 @@ class ProximityForest(Classifier):
                  is_leaf_method = pure,
                  max_tree_depth = np.math.inf,
                  param_pool_obtainer = get_default_param_pool):
-        super(Classifier, self).__init__(rand=rand)
+        super().__init__(rand=rand)
         self.gain_method = gain_method
         self.r = r
         self.max_tree_depth = max_tree_depth
