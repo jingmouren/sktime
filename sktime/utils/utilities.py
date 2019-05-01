@@ -56,7 +56,7 @@ def pick_from_indices(array, indices):
 
 
 def bests(array, comparator):
-    indices = arg_best(array, comparator)
+    indices = arg_bests(array, comparator)
     return pick_from_indices(array, indices)
 
 

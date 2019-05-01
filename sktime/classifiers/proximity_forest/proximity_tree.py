@@ -19,6 +19,7 @@ from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, 
 # todo mixin
 # todo score
 # todo return class label from predict, not index? Use label thing tony found - labels currently strings D:
+# todo parallel for proxtree and proxfor
 
 from utils.utilities import check_data
 
@@ -154,12 +155,15 @@ class ProximityTree(Classifier):
         distributions = np.empty((num_instances, len(self.label_encoder.classes_)))
         for instance_index in range(0, num_instances):
             instance = instances.iloc[instance_index, :]
+            previous_tree = self
             tree = self
             closest_exemplar_index = -1
             while tree:
                 distances = tree._split.exemplar_distance_inst(instance)
-                closest_exemplar_index = utilities.arg_min(distances, tree._rand)
+                closest_exemplar_index = utilities.arg_min(distances, tree.rand)
+                previous_tree = tree
                 tree = tree._branches[closest_exemplar_index]
+            tree = previous_tree
             prediction = np.zeros(len(self.label_encoder.classes_))
             closest_exemplar_class_label = tree._split.branch_class_labels[closest_exemplar_index]
             prediction[closest_exemplar_class_label] += 1
@@ -168,11 +172,11 @@ class ProximityTree(Classifier):
 
     def _branch(self, instances, class_labels):
         self._split = self._get_best_split(instances, class_labels)
-        num_branches = len(self._split.exemplar_instance_bins)
-        self._branches = np.empty(num_branches)
+        num_branches = len(self._split.branch_instances)
+        self._branches = np.empty(num_branches, dtype=object)
         if self.level < self.max_depth:
             for branch_index in np.arange(num_branches):
-                exemplar_class_labels = self._split.exemplar_class_labels_bins[branch_index]
+                exemplar_class_labels = self._split.branch_class_labels[branch_index]
                 if not self.is_leaf_method(exemplar_class_labels):
                     tree = clone(self)
                     tree.label_encoder = self.label_encoder
@@ -234,7 +238,7 @@ class ProximityTree(Classifier):
         return permutation
 
     def _get_best_split(self, instances, class_labels):
-        splits = np.empty(self.r)
+        splits = np.empty(self.r, dtype=object)
         for index in np.arange(self.r):
             split = self._pick_rand_split(instances, class_labels)
             splits[index] = split
