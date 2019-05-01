@@ -39,7 +39,10 @@ class Split(Classifier):
 
     def fit(self, instances, class_labels):
         check_data(instances, class_labels)
-        if not isinstance(self.param_perm, dict) or not callable(self.param_perm): # todo empty?
+        print(type(self.param_perm))
+        if callable(self.param_perm):
+            self.param_perm = self.param_perm(instances)
+        if not isinstance(self.param_perm, dict):
             raise ValueError("parameter permutation must be a dict or callable to obtain dict")
         if not callable(self.gain_method):
             raise ValueError("gain method must be callable")
@@ -47,12 +50,11 @@ class Split(Classifier):
             raise ValueError("gain method must be callable")
         if not isinstance(self.rand, np.random.RandomState):
             raise ValueError('rand not set to a random state')
-        if callable(self.param_perm):
-            self.param_perm = self.param_perm(instances)
         if self.distance_measure is None:
             key = self.get_distance_measure_key()
             self.distance_measure = self.param_perm[key]
-            del self.param_perm[key]
+            self.distance_measure_param_perm = self.param_perm.copy()
+            del self.distance_measure_param_perm[key]
         self.exemplar_instances, self.exemplar_class_labels, self.remaining_instances, self.remaining_class_labels = \
             self.pick_exemplars_method(instances, class_labels, self.rand)
         distances = self.exemplar_distances(self.remaining_instances)
@@ -75,18 +77,18 @@ class Split(Classifier):
         check_data(instances)
         num_instances = instances.shape[0]
         num_exemplars = len(self.exemplar_instances)
-        overall_distances = np.zeros((num_instances, num_exemplars))
+        distances = np.zeros((num_instances, num_exemplars))
         for instance_index in np.arange(num_instances):
             instance = instances.iloc[instance_index, :]
-            distances = self.exemplar_distance_inst(instance)
-            overall_distances[instance_index] = distances
-        return overall_distances
+            self.exemplar_distance_inst(instance, distances[instance_index])
+        return distances
 
-    def exemplar_distance_inst(self, instance):
+    def exemplar_distance_inst(self, instance, distances=None):
         if not isinstance(instance, Series):
             raise ValueError("instance not a panda series")
         num_exemplars = len(self.exemplar_instances)
-        distances = np.zeros(num_exemplars)
+        if distances is None:
+            distances = np.zeros(num_exemplars)
         for exemplar_index in np.arange(num_exemplars):
             exemplar = self.exemplar_instances[exemplar_index]
             distance = self._find_distance(exemplar, instance)

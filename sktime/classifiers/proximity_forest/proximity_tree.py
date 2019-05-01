@@ -64,19 +64,22 @@ def chi_squared(parent_class_labels, children_class_labels):
 
 
 def pick_rand_exemplars(instances, class_labels, rand):
-    instances = instances.copy(deep=True)
-    class_labels = class_labels.copy()
     unique_class_labels = np.unique(class_labels)
-    chosen_instances = []
-    chosen_class_labels = []
-    for class_label in unique_class_labels:
+    num_unique_class_labels = len(unique_class_labels)
+    chosen_instances = np.empty(num_unique_class_labels, dtype=object)
+    chosen_class_labels = np.empty(num_unique_class_labels, dtype=int)
+    chosen_indices = np.empty(num_unique_class_labels, dtype=int)
+    for class_label_index in np.arange(num_unique_class_labels):
+        class_label = unique_class_labels[class_label_index]
         indices = np.argwhere(class_labels == class_label)
+        indices = np.ravel(indices)
         index = rand.choice(indices)
         instance = instances.iloc[index, :]
-        chosen_instances.append(instance)
-        chosen_class_labels.append(class_label)
-        instances.drop(index)
-        class_labels.remove(index)
+        chosen_instances[class_label_index] = instance
+        chosen_class_labels[class_label_index] = class_label
+        chosen_indices[class_label_index] = index
+    class_labels = np.delete(class_labels, chosen_indices)
+    instances = instances.drop(instances.index[chosen_indices])
     return chosen_instances, chosen_class_labels, instances, class_labels
 
 
@@ -127,7 +130,7 @@ class ProximityTree(Classifier):
                  max_depth=np.math.inf,
                  rand=np.random.RandomState(),
                  is_leaf_method=pure,
-                 level=None,
+                 level=0,
                  pick_exemplars_method=pick_rand_exemplars,
                  param_pool=get_default_param_pool):
         super().__init__(rand=rand)
@@ -139,7 +142,6 @@ class ProximityTree(Classifier):
         self.is_leaf_method = is_leaf_method
         self.param_pool = param_pool
         # vars set in the fit method
-        self._param_pool = None
         self._branches = None
         self._split = None
         self._unique_class_labels = None
@@ -179,8 +181,8 @@ class ProximityTree(Classifier):
 
     def fit(self, instances, class_labels):
         check_data(instances, class_labels)
-        if self.level is None or self.level < 1:
-            raise ValueError('depth cannot be less than 1 or None')
+        if self.level is None or self.level < 0:
+            raise ValueError('depth cannot be less than 0 or None')
         if self.max_depth < 0:
             raise ValueError('max depth cannot be less than 0')
         if self.r < 1:
@@ -220,7 +222,7 @@ class ProximityTree(Classifier):
         #   {'C': [1, 10, 100, 1000], 'gamma': [{'C': [1, 10, 100, 1000], 'kernel': ['linear']}], 'kernel': ['rbf']},
         #  ]
         if params is None:
-            params = self._param_pool
+            params = self.param_pool
         param_pool = self.rand.choice(params)
         permutation = self._pick_param_permutation(param_pool)
         return permutation

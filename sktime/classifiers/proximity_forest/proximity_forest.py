@@ -35,7 +35,7 @@ class ProximityForest(Classifier):
         self._unique_class_labels = np.unique(class_labels)
         self._trees = np.empty(self.num_trees)
         for tree_index in range(0, self.num_trees - 1):
-            tree = ProximityTree(**self.get_params(), level=0)
+            tree = ProximityTree(**self.get_params())
             self._trees[tree_index] = tree
             tree.fit(instances, class_labels)
         return self
