@@ -1,3 +1,4 @@
+
 # Proximity Forest: An effective and scalable distance-based classifier for time series
 #
 # author: George Oastler (linkedin.com/goastler)
@@ -25,119 +26,137 @@
     #   biburl    = {https://dblp.org/rec/bib/journals/corr/abs-1808-10594},
     #   bibsource = {dblp computer science bibliography, https://dblp.org}
     # }
+#
+# todo docs
+# todo doctests?
+# todo unit tests
+# todo comment up!
+# todo score
+# todo param docs
+# todo parallel for proxtree, proxfor and proxstump? (might not work that last one!)
 
 from numpy.ma import floor
+from pandas import DataFrame
 from scipy.stats import uniform, randint
 import numpy as np
 from sklearn.base import clone
-from sklearn.preprocessing import LabelEncoder
-
+from sklearn.preprocessing import normalize, LabelEncoder
 from utils import utilities
 from utils.classifier import Classifier
-from classifiers.proximity_forest.split import Split
 from datasets import load_gunpoint
 from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, wddtw_distance, wdtw_distance, \
     msm_distance
-
-# todo docs
-# todo ref paper
-# todo doctests
-# todo unit tests
-# todo comment up!
-# todo mixin
-# todo score
-# todo return class label from predict, not index? Use label thing tony found - labels currently strings D:
-# todo parallel for proxtree and proxfor
-
+from utils.transformations import tabularise
 from utils.utilities import check_data
 
-
+# test whether a set of class labels are pure (i.e. all the same)
 def pure(class_labels):
+    # get unique class labels
     unique_class_labels = np.unique(class_labels)
+    # if more than 1 unique then not pure
     return len(unique_class_labels) <= 1
 
-
+# get gini score of a split, i.e. the gain from parent to children
 def gini(parent_class_labels,
          children_class_labels):  # todo make sure this outputs 1 (max) to 0 (min) as gini is usually other way around (i.e. 0 is pure, 1 is impure (or usually 0.5))
-    root_score = _gini_node(parent_class_labels)
+    # find gini for parent node
+    parent_score = gini_node(parent_class_labels)
+    # find number of instances overall
     parent_num_instances = parent_class_labels.shape[0]
+    # sum the children's gini scores
     children_score_sum = 0
     for index in np.arange(len(children_class_labels)):
         child_class_labels = children_class_labels[index]
-        child_score = _gini_node(child_class_labels)
+        # find gini score for this child
+        child_score = gini_node(child_class_labels)
+        # weight score by proportion of instances at child compared to parent
         child_size = len(child_class_labels)
         child_score *= (child_size / parent_num_instances)
+        # add to cumulative sum
         children_score_sum += child_score
-    score = root_score - children_score_sum
+    # gini outputs relative improvement
+    score = parent_score - children_score_sum
     return score
 
-
-def _gini_node(class_labels):
+# get gini score at a specific node
+def gini_node(class_labels):
+    # get number instances at node
     num_instances = class_labels.shape[0]
     score = 1
     if num_instances > 0:
         # count each class
         unique_class_labels, class_counts = np.unique(class_labels, return_counts=True)
+        # subtract class entropy from current score for each class
         for index in np.arange(len(unique_class_labels)):
             class_count = class_counts[index]
             proportion = class_count / num_instances
             score -= np.math.pow(proportion, 2)
     return score
 
-
+# todo
 def information_gain(parent_class_labels, children_class_labels):
     raise Exception('not implemented yet')
 
-
+# todo
 def chi_squared(parent_class_labels, children_class_labels):
     raise Exception('not implemented yet')
 
-
+# pick one random exemplar instance per class
 def pick_rand_exemplars(instances, class_labels, rand):
+    # find unique class labels
     unique_class_labels = np.unique(class_labels)
     num_unique_class_labels = len(unique_class_labels)
     chosen_instances = np.empty(num_unique_class_labels, dtype=object)
     chosen_class_labels = np.empty(num_unique_class_labels, dtype=int)
     chosen_indices = np.empty(num_unique_class_labels, dtype=int)
+    # for each class randomly choose and instance
     for class_label_index in np.arange(num_unique_class_labels):
         class_label = unique_class_labels[class_label_index]
+        # filter class labels for desired class and get indices
         indices = np.argwhere(class_labels == class_label)
+        # flatten numpy output
         indices = np.ravel(indices)
+        # random choice
         index = rand.choice(indices)
+        # record exemplar instance and class label
         instance = instances.iloc[index, :]
         chosen_instances[class_label_index] = instance
         chosen_class_labels[class_label_index] = class_label
         chosen_indices[class_label_index] = index
+    # remove exemplar class labels from dataset - note this returns a copy, not inplace!
     class_labels = np.delete(class_labels, chosen_indices)
+    # remove exemplar instances from dataset - note this returns a copy, not inplace!
     instances = instances.drop(instances.index[chosen_indices])
     return chosen_instances, chosen_class_labels, instances, class_labels
 
-
+# default parameter pool of distance measures and corresponding parameters derived from a dataset
 def get_default_param_pool(instances):
+    # find dataset properties
     instance_length = utilities.max_instance_length(
         instances)  # todo should this use the max instance length for unequal length dataset instances?
     max_raw_warping_window = floor((instance_length + 1) / 4)
     max_warping_window_percentage = max_raw_warping_window / instance_length
     stdp = utilities.stdp(instances)
+    # setup param pool dictionary array (same structure as sklearn's GridSearchCV params!)
     param_pool = [
-        {Split.get_distance_measure_key(): [dtw_distance],
+        {ProximityStump.get_distance_measure_key(): [dtw_distance],
          'w': uniform(0, max_warping_window_percentage)},
-        {Split.get_distance_measure_key(): [ddtw_distance],
+        {ProximityStump.get_distance_measure_key(): [ddtw_distance],
          'w': uniform(0, max_warping_window_percentage)},
-        {Split.get_distance_measure_key(): [wdtw_distance],
+        {ProximityStump.get_distance_measure_key(): [wdtw_distance],
          'g': uniform(0, 1)},
-        {Split.get_distance_measure_key(): [wddtw_distance],
+        {ProximityStump.get_distance_measure_key(): [wddtw_distance],
          'g': uniform(0, 1)},
-        {Split.get_distance_measure_key(): [lcss_distance],
+        {ProximityStump.get_distance_measure_key(): [lcss_distance],
          'epsilon': uniform(0.2 * stdp, stdp),
          'delta': randint(low=0, high=max_raw_warping_window)},
-        {Split.get_distance_measure_key(): [erp_distance],
+        {ProximityStump.get_distance_measure_key(): [erp_distance],
          'g': uniform(0.2 * stdp, 0.8 * stdp),
          'band_size': randint(low=0, high=max_raw_warping_window)},
         # {Split.get_distance_measure_key(): [twe_distance],
         #  'g': uniform(0.2 * stdp, 0.8 * stdp),
         #  'band_size': randint(low=0, high=max_raw_warping_window)},
-        {Split.get_distance_measure_key(): [msm_distance],
+        {ProximityStump.get_distance_measure_key(): [msm_distance],
          'c': [0.01, 0.01375, 0.0175, 0.02125, 0.025, 0.02875, 0.0325, 0.03625, 0.04, 0.04375, 0.0475, 0.05125,
                0.055, 0.05875, 0.0625, 0.06625, 0.07, 0.07375, 0.0775, 0.08125, 0.085, 0.08875, 0.0925, 0.09625,
                0.1, 0.136, 0.172, 0.208,
@@ -150,6 +169,135 @@ def get_default_param_pool(instances):
                64, 67.6, 71.2, 74.8, 78.4, 82, 85.6, 89.2, 92.8, 96.4, 100]},
     ]
     return param_pool
+
+# proximity tree classifier of depth 1 - in other words, a k=1 nearest neighbour classifier with neighbourhood limited
+# to x exemplar instances
+class ProximityStump(Classifier):
+
+    def __init__(self,
+                 pick_exemplars_method = None,
+                 param_perm = None,
+                 gain_method = None,
+                 label_encoder = None,
+                 rand = np.random.RandomState):
+        super().__init__(rand=rand)
+        self.param_perm = param_perm
+        self.gain_method = gain_method
+        self.pick_exemplars_method = pick_exemplars_method
+        # vars set in the fit method
+        self._distances = None
+        self.exemplar_instances = None
+        self.exemplar_class_labels = None
+        self.remaining_instances = None
+        self.remaining_class_labels = None
+        self.branch_instances = None
+        self.branch_class_labels = None
+        self.distance_measure_param_perm = None
+        self.distance_measure = None
+        self.gain = None
+        self.label_encoder = label_encoder
+
+    @staticmethod
+    def get_distance_measure_key():
+        return 'dm'
+
+    def fit(self, instances, class_labels):
+        check_data(instances, class_labels)
+        if callable(self.param_perm):
+            self.param_perm = self.param_perm(instances)
+        if not isinstance(self.param_perm, dict):
+            raise ValueError("parameter permutation must be a dict or callable to obtain dict")
+        if not callable(self.gain_method):
+            raise ValueError("gain method must be callable")
+        if not callable(self.pick_exemplars_method):
+            raise ValueError("gain method must be callable")
+        if not isinstance(self.rand, np.random.RandomState):
+            raise ValueError('rand not set to a random state')
+        if self.label_encoder is None:
+            self.label_encoder = LabelEncoder()
+        if not hasattr(self.label_encoder, 'classes_'):
+            self.label_encoder.fit(class_labels)
+            class_labels = self.label_encoder.transform(class_labels)
+        if self.distance_measure is None:
+            key = self.get_distance_measure_key()
+            self.distance_measure = self.param_perm[key]
+            self.distance_measure_param_perm = self.param_perm.copy()
+            del self.distance_measure_param_perm[key]
+        self.exemplar_instances, self.exemplar_class_labels, self.remaining_instances, self.remaining_class_labels = \
+            self.pick_exemplars_method(instances, class_labels, self.rand)
+        distances = self.exemplar_distances(self.remaining_instances)
+        num_exemplars = len(self.exemplar_instances)
+        self.branch_class_labels = np.empty(num_exemplars, dtype=object)
+        self.branch_instances = np.empty(num_exemplars, dtype=object)
+        for index in np.arange(num_exemplars):
+            self.branch_instances[index] = []
+            self.branch_class_labels[index] = []
+        num_instances = self.remaining_instances.shape[0]
+        for instance_index in np.arange(num_instances):
+            exemplar_distances = distances[instance_index]
+            instance = self.remaining_instances.iloc[instance_index, :]
+            class_label = self.remaining_class_labels[instance_index]
+            closest_exemplar_index = utilities.arg_min(exemplar_distances, self.rand)
+            self.branch_instances[closest_exemplar_index].append(instance)
+            self.branch_class_labels[closest_exemplar_index].append(class_label)
+        for index in np.arange(self.branch_class_labels.shape[0]):
+            self.branch_class_labels[index] = np.array(self.branch_class_labels[index])
+            self.branch_instances[index] = DataFrame(self.branch_instances[index])
+        self.gain = self.gain_method(class_labels, self.branch_class_labels)
+        return self
+
+    def exemplar_distances(self, instances):
+        check_data(instances)
+        num_instances = instances.shape[0]
+        num_exemplars = len(self.exemplar_instances)
+        distances = np.zeros((num_instances, num_exemplars))
+        for instance_index in np.arange(num_instances):
+            instance = instances.iloc[instance_index, :]
+            self.exemplar_distance_inst(instance, distances[instance_index])
+        return distances
+
+    def exemplar_distance_inst(self, instance, distances=None):
+        if not isinstance(instance, Series):
+            raise ValueError("instance not a panda series")
+        num_exemplars = len(self.exemplar_instances)
+        if distances is None:
+            distances = np.zeros(num_exemplars)
+        for exemplar_index in np.arange(num_exemplars):
+            exemplar = self.exemplar_instances[exemplar_index]
+            distance = self._find_distance(exemplar, instance)
+            distances[exemplar_index] = distance
+        return distances
+
+    def predict_proba(self, instances):
+        check_data(instances)
+        num_instances = instances.shape[0]
+        num_exemplars = len(self.exemplar_instances)
+        num_unique_class_labels = len(self.label_encoder.classes_)
+        distributions = np.empty((num_instances, num_unique_class_labels))
+        distances = self.exemplar_distances(instances)
+        for instance_index in np.arange(num_instances):
+            distribution = np.zeros(num_unique_class_labels)
+            distributions[instance_index] = distribution
+            for exemplar_index in np.arange(num_exemplars):
+                distance = distances[instance_index][exemplar_index]
+                exemplar_class_label = self.exemplar_class_labels[exemplar_index]
+                distribution[exemplar_class_label - 1] -= distance
+            max_distance = -np.min(distribution)
+            for exemplar_index in range(0, num_exemplars - 1):
+                distribution[exemplar_index] += max_distance
+        normalize(distributions, copy=False)
+        return distributions
+
+    def _find_distance(self, instance_a, instance_b):
+        if not isinstance(instance_a, Series):
+            raise ValueError("instance not a panda series")
+        if not isinstance(instance_b, Series):
+            raise ValueError("instance not a panda series")
+        instance_a = tabularise(instance_a, return_array=True)
+        instance_b = tabularise(instance_b, return_array=True)
+        instance_a = np.transpose(instance_a)
+        instance_b = np.transpose(instance_b)
+        return self.distance_measure(instance_a, instance_b, **self.distance_measure_param_perm)
 
 
 class ProximityTree(Classifier):
@@ -276,10 +424,10 @@ class ProximityTree(Classifier):
 
     def _pick_rand_split(self, instances, class_labels):
         param_perm = self._get_rand_param_perm()
-        split = Split(pick_exemplars_method=self.pick_exemplars_method,
-                      rand=self.rand,
-                      gain_method=self.gain_method,
-                      param_perm=param_perm)
+        split = ProximityStump(pick_exemplars_method=self.pick_exemplars_method,
+                               rand=self.rand,
+                               gain_method=self.gain_method,
+                               param_perm=param_perm)
         split.fit(instances, class_labels)
         return split
 
@@ -298,13 +446,82 @@ class ProximityTree(Classifier):
         return param_permutation
 
 
+class ProximityForest(Classifier):
+
+    def __init__(self,
+                 gain_method = gini,
+                 r = 5,
+                 num_trees = 100,
+                 rand = np.random.RandomState(),
+                 is_leaf_method = pure,
+                 max_depth = np.math.inf,
+                 label_encoder=None,
+                 param_pool = get_default_param_pool):
+        super().__init__(rand=rand)
+        self.gain_method = gain_method
+        self.r = r
+        self.label_encoder = label_encoder
+        self.max_depth = max_depth
+        self.num_trees = num_trees
+        self.is_leaf_method = is_leaf_method
+        self.param_pool = param_pool
+        # below set in fit method
+        self._trees = None
+
+    def fit(self, instances, class_labels):
+        check_data(instances, class_labels)
+        if self.num_trees < 1:
+            raise ValueError('number of trees cannot be less than 1')
+        if self.label_encoder is None:
+            self.label_encoder = LabelEncoder()
+        if not hasattr(self.label_encoder, 'classes_'):
+            self.label_encoder.fit(class_labels)
+            class_labels = self.label_encoder.transform(class_labels)
+        if callable(self.param_pool):
+            self.param_pool = self.param_pool(instances)
+        self._trees = np.empty(self.num_trees, dtype=object)
+        for tree_index in np.arange(self.num_trees):
+            print(tree_index)
+            tree = ProximityTree(
+                gain_method=self.gain_method,
+                r=self.r,
+                rand=self.rand,
+                is_leaf_method=self.is_leaf_method,
+                max_depth=self.max_depth,
+                label_encoder=self.label_encoder,
+                param_pool=self.param_pool
+            )
+            self._trees[tree_index] = tree
+            tree.fit(instances, class_labels)
+        return self
+
+    def predict_proba(self, instances):
+        check_data(instances)
+        overall_predict_probas = np.zeros((instances.shape[0], len(self.label_encoder.classes_)))
+        for tree_index in range(0, len(self._trees) - 1):
+            tree = self._trees[tree_index]
+            predict_probas = tree.predict_proba(instances)
+            for instance_index in np.arange(predict_probas.shape[0]):
+                predict_proba = predict_probas[instance_index]
+                max_index = utilities.arg_max(predict_proba, self.rand)
+                overall_predict_probas[instance_index][max_index] += 1
+        normalize(overall_predict_probas, copy=False)
+        return overall_predict_probas
+
 if __name__ == "__main__":
     x_train, y_train = load_gunpoint(split='TRAIN', return_X_y=True)
     x_test, y_test = load_gunpoint(split='TEST', return_X_y=True)
-    tree = ProximityTree(rand=np.random.RandomState(3), r=1)
-    tree.fit(x_train, y_train)
-    distribution = tree.predict_proba(x_test)
-    predictions = utilities.predict_from_distribution(distribution, tree.rand, tree.label_encoder)
+    classifier = ProximityForest(rand=np.random.RandomState(3))
+    classifier.fit(x_train, y_train)
+
+    # for tree in classifier._trees:
+    #     distribution = tree.predict_proba(x_test)
+    #     predictions = utilities.predict_from_distribution(distribution, classifier.rand, classifier.label_encoder)
+    #     acc = utilities.accuracy(y_test, predictions)
+    #     print(str(acc))
+
+    distribution = classifier.predict_proba(x_test)
+    predictions = utilities.predict_from_distribution(distribution, classifier.rand, classifier.label_encoder)
     acc = utilities.accuracy(y_test, predictions)
     print("----")
     print("acc: " + str(acc))
