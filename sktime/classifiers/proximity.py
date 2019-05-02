@@ -36,7 +36,7 @@
 # todo parallel for proxtree, proxfor and proxstump? (might not work that last one!)
 
 from numpy.ma import floor
-from pandas import DataFrame
+from pandas import DataFrame, Series
 from scipy.stats import uniform, randint
 import numpy as np
 from sklearn.base import clone
