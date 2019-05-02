@@ -1,12 +1,13 @@
 import numpy as np
 from pandas import DataFrame
 
-def predict_from_distribution(distributions, rand):
-    predictions = np.empty((distributions.shape[0]))
-    for instance_index in range(0, predictions.shape[0]):
+def predict_from_distribution(distributions, rand, label_encoder):
+    predictions = np.empty((distributions.shape[0]), dtype=int)
+    for instance_index in np.arange(predictions.shape[0]):
         distribution = distributions[instance_index]
-        prediction = max(distribution, rand)
+        prediction = arg_max(distribution, rand)
         predictions[instance_index] = prediction
+    predictions = label_encoder.inverse_transform(predictions)
     return predictions
 
 def check_data(instances, class_labels=None):
@@ -104,19 +105,19 @@ def arg_maxs(array):
     return arg_bests(array, more_than)
 
 
-def less_than(a, b):
-    if b < a:
+def more_than(a, b):
+    if a < b:
         return -1
-    elif b > a:
+    elif a > b:
         return 1
     else:
         return 0
 
 
-def more_than(a, b):
-    if b < a:
+def less_than(a, b):
+    if a < b:
         return 1
-    elif b > a:
+    elif a > b:
         return -1
     else:
         return 0
