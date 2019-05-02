@@ -52,13 +52,14 @@ class Split(Classifier):
             raise ValueError('rand not set to a random state')
         if self.label_encoder is None:
             self.label_encoder = LabelEncoder()
+        if not hasattr(self.label_encoder, 'classes_'):
             self.label_encoder.fit(class_labels)
+            class_labels = self.label_encoder.transform(class_labels)
         if self.distance_measure is None:
             key = self.get_distance_measure_key()
             self.distance_measure = self.param_perm[key]
             self.distance_measure_param_perm = self.param_perm.copy()
             del self.distance_measure_param_perm[key]
-        class_labels = self.label_encoder.transform(class_labels)
         self.exemplar_instances, self.exemplar_class_labels, self.remaining_instances, self.remaining_class_labels = \
             self.pick_exemplars_method(instances, class_labels, self.rand)
         distances = self.exemplar_distances(self.remaining_instances)

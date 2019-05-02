@@ -1,3 +1,31 @@
+# Proximity Forest: An effective and scalable distance-based classifier for time series
+#
+# author: George Oastler (linkedin.com/goastler)
+#
+# paper link: https://arxiv.org/abs/1808.10594
+# bibtex reference:
+    # @article{DBLP:journals/corr/abs-1808-10594,
+    #   author    = {Benjamin Lucas and
+    #                Ahmed Shifaz and
+    #                Charlotte Pelletier and
+    #                Lachlan O'Neill and
+    #                Nayyar A. Zaidi and
+    #                Bart Goethals and
+    #                Fran{\c{c}}ois Petitjean and
+    #                Geoffrey I. Webb},
+    #   title     = {Proximity Forest: An effective and scalable distance-based classifier
+    #                for time series},
+    #   journal   = {CoRR},
+    #   volume    = {abs/1808.10594},
+    #   year      = {2018},
+    #   url       = {http://arxiv.org/abs/1808.10594},
+    #   archivePrefix = {arXiv},
+    #   eprint    = {1808.10594},
+    #   timestamp = {Mon, 03 Sep 2018 13:36:40 +0200},
+    #   biburl    = {https://dblp.org/rec/bib/journals/corr/abs-1808-10594},
+    #   bibsource = {dblp computer science bibliography, https://dblp.org}
+    # }
+
 from numpy.ma import floor
 from scipy.stats import uniform, randint
 import numpy as np
@@ -128,7 +156,7 @@ class ProximityTree(Classifier):
 
     def __init__(self,
                  gain_method=gini,
-                 r=1,
+                 r=5,
                  max_depth=np.math.inf,
                  rand=np.random.RandomState(),
                  is_leaf_method=pure,
@@ -205,8 +233,9 @@ class ProximityTree(Classifier):
             raise ValueError('rand not set to a random state')
         if self.label_encoder is None:
             self.label_encoder = LabelEncoder()
+        if not hasattr(self.label_encoder, 'classes_'):
             self.label_encoder.fit(class_labels)
-        class_labels = self.label_encoder.transform(class_labels)
+            class_labels = self.label_encoder.transform(class_labels)
         tree_stack = [self]
         instances_stack = [instances]
         class_labels_stack = [class_labels]
@@ -270,17 +299,12 @@ class ProximityTree(Classifier):
 
 
 if __name__ == "__main__":
-    # a = np.array([2,2,2,2], dtype=float)
-    # b = np.array([3,5,1,5], dtype=float)
-    # a = a.reshape((4,1))
-    # b = b.reshape((4,1))
-    # dist = lcss_distance(a, b, delta=1, epsilon=0.3)
-    # print(dist)
-
     x_train, y_train = load_gunpoint(split='TRAIN', return_X_y=True)
     x_test, y_test = load_gunpoint(split='TEST', return_X_y=True)
     tree = ProximityTree(rand=np.random.RandomState(3), r=1)
     tree.fit(x_train, y_train)
     distribution = tree.predict_proba(x_test)
     predictions = utilities.predict_from_distribution(distribution, tree.rand, tree.label_encoder)
-    print(predictions)
+    acc = utilities.accuracy(y_test, predictions)
+    print("----")
+    print("acc: " + str(acc))
