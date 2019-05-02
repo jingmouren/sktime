@@ -155,7 +155,7 @@ class ProximityTree(Classifier):
         distributions = np.empty((num_instances, len(self.label_encoder.classes_)))
         for instance_index in range(0, num_instances):
             instance = instances.iloc[instance_index, :]
-            previous_tree = self
+            previous_tree = None
             tree = self
             closest_exemplar_index = -1
             while tree:
@@ -165,7 +165,7 @@ class ProximityTree(Classifier):
                 tree = tree._branches[closest_exemplar_index]
             tree = previous_tree
             prediction = np.zeros(len(self.label_encoder.classes_))
-            closest_exemplar_class_label = tree._split.branch_class_labels[closest_exemplar_index]
+            closest_exemplar_class_label = tree._split.exemplar_class_labels[closest_exemplar_index]
             prediction[closest_exemplar_class_label] += 1
             distributions[instance_index] = prediction
         return distributions
@@ -281,3 +281,6 @@ if __name__ == "__main__":
     x_test, y_test = load_gunpoint(split='TEST', return_X_y=True)
     tree = ProximityTree(rand=np.random.RandomState(3), r=1)
     tree.fit(x_train, y_train)
+    distribution = tree.predict_proba(x_test)
+    predictions = utilities.predict_from_distribution(distribution, tree.rand, tree.label_encoder)
+    print(predictions)
