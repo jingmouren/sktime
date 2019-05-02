@@ -1,1 +1,1 @@
-from .elastic_cython import *
+from sktime.distances.elastic_cython import *
