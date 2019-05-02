@@ -57,8 +57,7 @@ def pure(class_labels):
     return len(unique_class_labels) <= 1
 
 # get gini score of a split, i.e. the gain from parent to children
-def gini(parent_class_labels,
-         children_class_labels):  # todo make sure this outputs 1 (max) to 0 (min) as gini is usually other way around (i.e. 0 is pure, 1 is impure (or usually 0.5))
+def gini(parent_class_labels, children_class_labels):
     # find gini for parent node
     parent_score = gini_node(parent_class_labels)
     # find number of instances overall
@@ -90,7 +89,10 @@ def gini_node(class_labels):
         for index in np.arange(len(unique_class_labels)):
             class_count = class_counts[index]
             proportion = class_count / num_instances
-            score -= np.math.pow(proportion, 2)
+            sq_proportion = np.math.pow(proportion, 2)
+            score -= sq_proportion
+    # double score as gini is between 0 and 0.5, we need 0 and 1
+    score *= 2
     return score
 
 # todo
@@ -300,7 +302,7 @@ class ProximityStump(Classifier):
         return self.distance_measure(instance_a, instance_b, **self.distance_measure_param_perm)
 
 
-class ProximityTree(Classifier):
+class ProximityTree(Classifier): # todd rename split to stump
 
     def __init__(self,
                  gain_method=gini,
@@ -416,9 +418,11 @@ class ProximityTree(Classifier):
 
     def _get_best_split(self, instances, class_labels):
         splits = np.empty(self.r, dtype=object)
+        print('split gains:')
         for index in np.arange(self.r):
             split = self._pick_rand_split(instances, class_labels)
             splits[index] = split
+            print(str(split.gain))
         best_split = utilities.best(splits, lambda a, b: b.gain - a.gain, self.rand)
         return best_split
 
@@ -509,16 +513,29 @@ class ProximityForest(Classifier):
         return overall_predict_probas
 
 if __name__ == "__main__":
+    # # class_labels_parent = np.array([1,1,1,1,2,2,2,2])
+    # # class_labels_child_b = np.array([1,1,2,2])
+    # # class_labels_child_a = np.array([1,1,2,2])
+    # class_labels_parent = np.array([1,1,1,1,2,2,2,2])
+    # b = np.array([1,1,2,2])
+    # a = np.array([1,1,2,2])
+    # # class_labels_child_c = np.array([2,2])
+    # # class_labels_parent = np.array([1,1,1,2,2,2])
+    # # class_labels_child_b = np.array([2,2,2])
+    # # class_labels_child_a = np.array([1,1,1])
+    # score = gini(class_labels_parent, [a, b])
+    # print(score)
+
     x_train, y_train = load_gunpoint(split='TRAIN', return_X_y=True)
     x_test, y_test = load_gunpoint(split='TEST', return_X_y=True)
-    classifier = ProximityForest(rand=np.random.RandomState(3))
+    classifier = ProximityForest(rand=np.random.RandomState(3), r=5, num_trees=1)
     classifier.fit(x_train, y_train)
 
-    # for tree in classifier._trees:
-    #     distribution = tree.predict_proba(x_test)
-    #     predictions = utilities.predict_from_distribution(distribution, classifier.rand, classifier.label_encoder)
-    #     acc = utilities.accuracy(y_test, predictions)
-    #     print(str(acc))
+    for tree in classifier._trees:
+        distribution = tree.predict_proba(x_test)
+        predictions = utilities.predict_from_distribution(distribution, classifier.rand, classifier.label_encoder)
+        acc = utilities.accuracy(y_test, predictions)
+        print(str(acc))
 
     distribution = classifier.predict_proba(x_test)
     predictions = utilities.predict_from_distribution(distribution, classifier.rand, classifier.label_encoder)
