@@ -65,16 +65,18 @@ class BOSSEnsemble(BaseEstimator):
 
     def __init__(self,
                  randomised_ensemble=False,
-                 random_ensemble_size=100,
+                 ensemble_size=100,
                  random_state=None,
                  dim_to_use=0,
                  threshold=0.92,
                  max_ensemble_size=250,
-                 wordLengths=[16, 14, 12, 10, 8],
-                 alphabetSize=4
+                 word_lengths=[16, 14, 12, 10, 8],
+                 alphabet_size=4,
+                 min_window =10,
+                 norm_options=[True, False]
                  ):
         self.randomised_ensemble = randomised_ensemble
-        self.ensemble_size = random_ensemble_size
+        self.ensemble_size = ensemble_size
         self.random_state = random_state
         random.seed(random_state)
         self.dim_to_use = dim_to_use
@@ -82,7 +84,6 @@ class BOSSEnsemble(BaseEstimator):
         self.max_ensemble_size = max_ensemble_size
 
         self.seed = 0
-
         self.classifiers = []
         self.num_classes = 0
         self.classes_ = []
@@ -91,10 +92,10 @@ class BOSSEnsemble(BaseEstimator):
         self.series_length=0
         # For the multivariate case treating this as a univariate classifier
         # Parameter search values
-        self.word_lengths = wordLengths
-        self.norm_options = [True, False]
-        self.alphabet_size = alphabetSize
-        self.min_window = 10
+        self.word_lengths = word_lengths
+        self.norm_options = norm_options
+        self.alphabet_size = alphabet_size
+        self.min_window = min_window
 
 
     def fit(self, X, y):
@@ -113,7 +114,6 @@ class BOSSEnsemble(BaseEstimator):
         self : object
          """
 
-
         if isinstance(X, pd.DataFrame):
             if isinstance(X.iloc[0,self.dim_to_use],pd.Series):
                 X = np.asarray([a.values for a in X.iloc[:,0]])
@@ -123,13 +123,9 @@ class BOSSEnsemble(BaseEstimator):
         num_insts, self.series_length = X.shape
         self.num_classes = np.unique(y).shape[0]
         self.classes_ = class_distribution(np.asarray(y).reshape(-1, 1))[0][0]
-#        self.classes_ = list(set(y))
         for index, classVal in enumerate(self.classes_):
             self.class_dictionary[classVal] = index
 
-
-#        for index, classVal in enumerate(self.classes_):
-#            self.class_dictionary[classVal] = index
         # Window length parameter space dependent on series length
 
         max_window_searches = self.series_length/4
@@ -212,9 +208,10 @@ class BOSSEnsemble(BaseEstimator):
         for i, clf in enumerate(self.classifiers):
             preds = clf.predict(X)
             for i in range(0,X.shape[0]):
-                sums[i,self.class_dictionary.get(str(preds[i]))] += 1
+                sums[i,self.class_dictionary.get(preds[i])] += 1
 
         dists = sums / (np.ones(self.num_classes) * self.num_classifiers)
+
         return dists
 
     def include_in_ensemble(self, acc, maxAcc, minMaxAcc, size):
@@ -236,7 +233,22 @@ class BOSSEnsemble(BaseEstimator):
 
         return minAcc, minAccInd
 
-    def findEnsembleTrainAcc(self, X, y):
+    def get_train_probs(self, X):
+        num_inst = X.shape[0]
+        results = np.zeros((num_inst,self.num_classes))
+        divisor = (np.ones(self.num_classes) * self.num_classifiers)
+        for i in range(num_inst):
+            sums = np.zeros(self.num_classes)
+
+            for n in range(len(self.classifiers)):
+                sums[self.class_dictionary.get(self.classifiers[n].train_predict(i), -1)] += 1
+
+            dists = sums / divisor
+            for n in range(self.num_classes):
+                results[i][n] = dists[n]
+        return results
+
+    def find_ensemble_train_acc(self, X, y):
         num_inst = X.shape[0]
         results = np.zeros((2 + self.num_classes, num_inst + 1))
         correct = 0
@@ -269,20 +281,20 @@ class BOSSIndividual:
     Bag of SFA Symbols Ensemble: implementation of BOSS from Schaffer :
     @article
     """
-    def __init__(self, windowSize, wordLength, alphabetSize, norm):
-        self.windowSize = windowSize
-        self.wordLength = wordLength
-        self.alphabetSize = alphabetSize
+    def __init__(self, window_size, word_length, alphabet_size, norm):
+        self.window_size = window_size
+        self.word_length = word_length
+        self.alphabet_size = alphabet_size
         self.norm = norm
 
-        self.transform = BOSSTransform(windowSize, wordLength, alphabetSize, norm)
-        self.transformedData = []
-        self.classVals = []
+        self.transform = BOSSTransform(window_size, word_length, alphabet_size, norm)
+        self.transformed_data = []
+        self.class_vals = []
         self.accuracy = 0
 
     def fit(self, X, y):
-        self.transformedData = self.transform.fit(X)
-        self.classVals = y
+        self.transformed_data = self.transform.fit(X)
+        self.class_vals = y
 
     def predict(self, X):
         num_insts, num_atts = X.shape
@@ -293,51 +305,51 @@ class BOSSIndividual:
             bestDist = sys.float_info.max
             nn = -1
 
-            for n, bag in enumerate(self.transformedData):
+            for n, bag in enumerate(self.transformed_data):
                 dist = self.BOSSDistance(testBag, bag, bestDist)
 
                 if dist < bestDist:
                     bestDist = dist;
-                    nn = self.classVals[n]
+                    nn = self.class_vals[n]
 
             classes[i] = nn
 
         return classes
 
     def train_predict(self, train_num):
-        testBag = self.transformedData[train_num]
-        bestDist = sys.float_info.max
+        testBag = self.transformed_data[train_num]
+        best_dist = sys.float_info.max
         nn = -1
 
-        for n, bag in enumerate(self.transformedData):
+        for n, bag in enumerate(self.transformed_data):
             if n == train_num:
                 continue
 
-            dist = self.BOSSDistance(testBag, bag, bestDist)
+            dist = self.BOSSDistance(testBag, bag, best_dist)
 
-            if dist < bestDist:
-                bestDist = dist;
-                nn = self.classVals[n]
+            if dist < best_dist:
+                best_dist = dist;
+                nn = self.class_vals[n]
 
         return nn
 
-    def BOSSDistance(self, bagA, bagB, bestDist):
+    def BOSSDistance(self, bagA, bagB, best_dist):
         dist = 0
 
         for word, valA in bagA.items():
             valB = bagB.get(word, 0)
             dist += (valA-valB)*(valA-valB)
 
-            if dist > bestDist:
+            if dist > best_dist:
                 return sys.float_info.max
 
         return dist
 
-    def shortenBags(self, wordLen):
-        newBOSS = BOSSIndividual(self.windowSize, wordLen, self.alphabetSize, self.norm)
+    def shortenBags(self, word_len):
+        newBOSS = BOSSIndividual(self.window_size, word_len, self.alphabet_size, self.norm)
         newBOSS.transform = self.transform
-        newBOSS.transformedData = self.transform.shorten_bags(wordLen)
-        newBOSS.classVals = self.classVals
+        newBOSS.transformed_data = self.transform.shorten_bags(word_len)
+        newBOSS.class_vals = self.class_vals
 
         return newBOSS
 
@@ -345,7 +357,7 @@ class BOSSIndividual:
         self.transform.words = None
 
     def setWordLen(self, wordLen):
-        self.wordLength = wordLen
+        self.word_length = wordLen
         self.transform.word_length = wordLen
 
 class BOSSTransform():
