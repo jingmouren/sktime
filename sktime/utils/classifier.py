@@ -1,3 +1,4 @@
+from joblib import Parallel
 from pandas import DataFrame
 from sklearn.base import BaseEstimator, ClassifierMixin
 import numpy as np
@@ -9,7 +10,8 @@ from utils.utilities import check_data
 
 class Classifier(BaseEstimator, ClassifierMixin):
     def __init__(self,
-                 rand=None):
+                 rand=None,
+                 ):
         super().__init__()
         self.rand = rand
         self.label_encoder = None

@@ -35,7 +35,6 @@
 # todo param docs
 # todo use generators in indexed for loops
 # todo parallel for proxtree, proxfor and proxstump? (might not work that last one!)
-
 from numpy.ma import floor
 from pandas import DataFrame, Series
 from scipy.stats import uniform, randint
@@ -65,7 +64,7 @@ def gini(parent_class_labels, children_class_labels):
     parent_num_instances = parent_class_labels.shape[0]
     # sum the children's gini scores
     children_score_sum = 0
-    for index in np.arange(len(children_class_labels)):
+    for index in range(0,len(children_class_labels)):
         child_class_labels = children_class_labels[index]
         # find gini score for this child
         child_score = gini_node(child_class_labels)
@@ -87,7 +86,7 @@ def gini_node(class_labels):
         # count each class
         unique_class_labels, class_counts = np.unique(class_labels, return_counts=True)
         # subtract class entropy from current score for each class
-        for index in np.arange(len(unique_class_labels)):
+        for index in range(0,len(unique_class_labels)):
             class_count = class_counts[index]
             proportion = class_count / num_instances
             sq_proportion = np.math.pow(proportion, 2)
@@ -113,7 +112,7 @@ def pick_rand_exemplars(instances, class_labels, rand):
     chosen_class_labels = np.empty(num_unique_class_labels, dtype=int)
     chosen_indices = np.empty(num_unique_class_labels, dtype=int)
     # for each class randomly choose and instance
-    for class_label_index in np.arange(num_unique_class_labels):
+    for class_label_index in range(0,num_unique_class_labels):
         class_label = unique_class_labels[class_label_index]
         # filter class labels for desired class and get indices
         indices = np.argwhere(class_labels == class_label)
@@ -234,18 +233,18 @@ class ProximityStump(Classifier):
         num_exemplars = len(self.exemplar_instances)
         self.branch_class_labels = np.empty(num_exemplars, dtype=object)
         self.branch_instances = np.empty(num_exemplars, dtype=object)
-        for index in np.arange(num_exemplars):
+        for index in range(0,num_exemplars):
             self.branch_instances[index] = []
             self.branch_class_labels[index] = []
         num_instances = self.remaining_instances.shape[0]
-        for instance_index in np.arange(num_instances):
+        for instance_index in range(0,num_instances):
             exemplar_distances = distances[instance_index]
             instance = self.remaining_instances.iloc[instance_index, :]
             class_label = self.remaining_class_labels[instance_index]
             closest_exemplar_index = utilities.arg_min(exemplar_distances, self.rand)
             self.branch_instances[closest_exemplar_index].append(instance)
             self.branch_class_labels[closest_exemplar_index].append(class_label)
-        for index in np.arange(self.branch_class_labels.shape[0]):
+        for index in range(0,self.branch_class_labels.shape[0]):
             self.branch_class_labels[index] = np.array(self.branch_class_labels[index])
             self.branch_instances[index] = DataFrame(self.branch_instances[index])
         self.gain = self.gain_method(class_labels, self.branch_class_labels)
@@ -256,7 +255,7 @@ class ProximityStump(Classifier):
         num_instances = instances.shape[0]
         num_exemplars = len(self.exemplar_instances)
         distances = np.zeros((num_instances, num_exemplars))
-        for instance_index in np.arange(num_instances):
+        for instance_index in range(0,num_instances):
             instance = instances.iloc[instance_index, :]
             self.exemplar_distance_inst(instance, distances[instance_index])
         return distances
@@ -267,7 +266,7 @@ class ProximityStump(Classifier):
         num_exemplars = len(self.exemplar_instances)
         if distances is None:
             distances = np.zeros(num_exemplars)
-        for exemplar_index in np.arange(num_exemplars):
+        for exemplar_index in range(0,num_exemplars):
             exemplar = self.exemplar_instances[exemplar_index]
             distance = self._find_distance(exemplar, instance)
             distances[exemplar_index] = distance
@@ -280,10 +279,10 @@ class ProximityStump(Classifier):
         num_unique_class_labels = len(self.label_encoder.classes_)
         distributions = np.empty((num_instances, num_unique_class_labels))
         distances = self.exemplar_distances(instances)
-        for instance_index in np.arange(num_instances):
+        for instance_index in range(0,num_instances):
             distribution = np.zeros(num_unique_class_labels)
             distributions[instance_index] = distribution
-            for exemplar_index in np.arange(num_exemplars):
+            for exemplar_index in range(0,num_exemplars):
                 distance = distances[instance_index][exemplar_index]
                 exemplar_class_label = self.exemplar_class_labels[exemplar_index]
                 distribution[exemplar_class_label - 1] -= distance
@@ -357,10 +356,10 @@ class ProximityTree(Classifier): # todd rename split to stump
         num_branches = len(self._split.branch_instances)
         self._branches = np.empty(num_branches, dtype=object)
         if self.level < self.max_depth:
-            for branch_index in np.arange(num_branches):
+            for branch_index in range(0,num_branches):
                 exemplar_class_labels = self._split.branch_class_labels[branch_index]
                 if not self.is_leaf_method(exemplar_class_labels):
-                    tree = clone(self)
+                    tree = clone(self, safe=True)
                     tree.label_encoder = self.label_encoder
                     tree.depth = self.level + 1
                     self._branches[branch_index] = tree
@@ -399,7 +398,7 @@ class ProximityTree(Classifier): # todd rename split to stump
             instances = instances_stack.pop()
             class_labels = class_labels_stack.pop()
             tree._branch(instances, class_labels)
-            for branch_index in np.arange(len(tree._branches)):
+            for branch_index in range(0,len(tree._branches)):
                 sub_tree = tree._branches[branch_index]
                 if sub_tree is not None:
                     tree_stack.insert(0, sub_tree)
@@ -423,7 +422,7 @@ class ProximityTree(Classifier): # todd rename split to stump
 
     def _get_best_split(self, instances, class_labels):
         splits = np.empty(self.r, dtype=object)
-        for index in np.arange(self.r):
+        for index in range(0,self.r):
             split = self._pick_rand_split(instances, class_labels)
             splits[index] = split
         best_split = utilities.best(splits, lambda a, b: b.gain - a.gain, self.rand)
@@ -476,6 +475,19 @@ class ProximityForest(Classifier):
         self._trees = None
         self.classes_ = None
 
+    def _generate_tree(self, instances, class_labels):
+        tree = ProximityTree(
+            gain_method=self.gain_method,
+            r=self.r,
+            rand=self.rand,
+            is_leaf_method=self.is_leaf_method,
+            max_depth=self.max_depth,
+            label_encoder=self.label_encoder,
+            param_pool=self.param_pool
+        )
+        tree.fit(instances, class_labels)
+        return tree
+
     def fit(self, instances, class_labels):
         check_data(instances, class_labels)
         if self.num_trees < 1:
@@ -489,7 +501,7 @@ class ProximityForest(Classifier):
             self.param_pool = self.param_pool(instances)
         self.classes_ = self.label_encoder.classes_
         self._trees = np.empty(self.num_trees, dtype=object)
-        for tree_index in np.arange(self.num_trees):
+        for tree_index in range(0, self.num_trees):
             print("tree index: " + str(tree_index))
             tree = ProximityTree(
                 gain_method=self.gain_method,
@@ -506,15 +518,12 @@ class ProximityForest(Classifier):
 
     def predict_proba(self, instances):
         check_data(instances)
+        # overall_predict_probas = np.zeros((instances.shape[0], len(self.label_encoder.classes_)))
         overall_predict_probas = np.zeros((instances.shape[0], len(self.label_encoder.classes_)))
-        for tree_index in np.arange(len(self._trees)):
-            tree = self._trees[tree_index]
+        for tree in self._trees:
             predict_probas = tree.predict_proba(instances)
-            for instance_index in np.arange(predict_probas.shape[0]):
-                predict_proba = predict_probas[instance_index]
-                max_index = utilities.arg_max(predict_proba, self.rand)
-                overall_predict_probas[instance_index][max_index] += 1
-        normalize(overall_predict_probas, copy=False)
+            overall_predict_probas = np.add(overall_predict_probas, predict_probas)
+        normalize(overall_predict_probas, copy=False, norm='l1')
         return overall_predict_probas
 
 # todo debug option to do helpful printing
