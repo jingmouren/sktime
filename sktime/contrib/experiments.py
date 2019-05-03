@@ -4,6 +4,19 @@ import sktime.contrib.frequency_based.rise as fb
 import sktime.contrib.interval_based.tsf as ib
 import sktime.contrib.dictionary_based.boss_ensemble as db
 import sktime.classifiers.ensemble as ensemble
+from classifiers.proximity import ProximityForest
+from sktime.transformers.compose import RowwiseTransformer
+from sktime.transformers.compose import Tabulariser
+from sktime.transformers.series_to_series import RandomIntervalSegmenter
+from sktime.pipeline import TSPipeline
+from sktime.pipeline import TSFeatureUnion
+from sktime.classifiers.ensemble import TimeSeriesForestClassifier
+from statsmodels.tsa.stattools import acf
+from statsmodels.tsa.ar_model import AR
+from sklearn.preprocessing import FunctionTransformer
+from sklearn.tree import DecisionTreeClassifier
+#from sklearn.ensemble import RandomForestClassifier
+#import sktime.contrib.hivecote.distance_based.elastic_ensemble as dist
 import numpy as np
 import time
 from sktime.utils.load_data import load_from_tsfile_to_dataframe as load_ts
@@ -24,8 +37,11 @@ Will have both low level version and high level orchestration version soon.
 
 
 datasets = [
-    "Adiac",
+    "GunPoint",
+    "ItalyPowerDemand",
     "ArrowHead",
+    "Coffee",
+    "Adiac",
     "Beef",
     "BeetleFly",
     "BirdChicken",
@@ -33,7 +49,6 @@ datasets = [
     "CBF",
     "ChlorineConcentration",
     "CinCECGTorso",
-    "Coffee",
     "Computers",
     "CricketX",
     "CricketY",
@@ -54,14 +69,12 @@ datasets = [
     "Fish",
 #    "FordA",
 #    "FordB",
-    "GunPoint",
     "Ham",
 #    "HandOutlines",
     "Haptics",
     "Herring",
     "InlineSkate",
     "InsectWingbeatSound",
-    "ItalyPowerDemand",
     "LargeKitchenAppliances",
     "Lightning2",
     "Lightning7",
@@ -112,7 +125,9 @@ datasets = [
 ]
 
 
-def set_classifier(cls):
+
+
+def set_classifier(cls, rand=np.random.RandomState()):
     """
     Basic way of determining the classifier to build. To differentiate settings just and another elif. So, for example, if
     you wanted tuned TSF, you just pass TuneTSF and set up the tuning mechanism in the elif.
@@ -121,6 +136,8 @@ def set_classifier(cls):
     :return: A classifier.
 
     """
+    if cls.lower() == 'pf':
+        return ProximityForest(rand=rand)
     if cls == 'RISE' or cls == 'rise':
         return fb.RandomIntervalSpectralForest()
     elif  cls == 'TSF' or cls == 'tsf':
@@ -152,6 +169,7 @@ def run_experiment(problem_path, results_path, cls_name, dataset, resampleID=0, 
     :param train_file: whether to generate train files or not. If true, it performs a 10xCV on the train and saves
     :return:
     """
+    cls_name = cls_name.upper()
     build_test = True
     if not overwrite:
         full_path = str(results_path)+"/"+str(cls_name)+"/Predictions/" + str(dataset) +"/testFold"+str(resampleID)+".csv"
@@ -175,7 +193,7 @@ def run_experiment(problem_path, results_path, cls_name, dataset, resampleID=0, 
     le.fit(trainY)
     trainY = le.transform(trainY)
     testY = le.transform(testY)
-    classifier = set_classifier(cls_name)
+    classifier = set_classifier(cls_name, rand=np.random.RandomState(resampleID))
     print(cls_name + " on " + dataset + " resample number " + str(resampleID))
     if build_test:
         # TO DO : use sklearn CV
@@ -187,13 +205,12 @@ def run_experiment(problem_path, results_path, cls_name, dataset, resampleID=0, 
         preds = classifier.classes_[np.argmax(probs, axis=1)]
         test_time = int(round(time.time() * 1000))-start
         ac = accuracy_score(testY, preds)
-#        print(str(classifier.findEnsembleTrainAcc(trainX, trainY)))
+        print(cls_name + " on " + dataset + " resample number " + str(resampleID) + ' test acc: ' + str(ac))
+        #        print(str(classifier.findEnsembleTrainAcc(trainX, trainY)))
         second = str(classifier.get_params())
         third = str(ac)+","+str(build_time)+","+str(test_time)+",-1,-1,"+str(len(classifier.classes_))+ "," + str(classifier.classes_)
-
         write_results_to_uea_format(second_line=second, third_line=third, output_path=results_path, classifier_name=cls_name, resample_seed= resampleID,
-                                    predicted_class_vals=preds, actual_probas=probs, dataset_name=dataset, actual_class_vals=testY)
-
+                                predicted_class_vals=preds, actual_probas=probs, dataset_name=dataset, actual_class_vals=testY, split='TEST')
     if train_file:
         start = int(round(time.time() * 1000))
         if build_test and hasattr(classifier,"get_train_probs"):    #Normally Can only do this if test has been built ... well not necessarily true, but will do for now
@@ -203,12 +220,12 @@ def run_experiment(problem_path, results_path, cls_name, dataset, resampleID=0, 
         train_time = int(round(time.time() * 1000)) - start
         train_preds = classifier.classes_[np.argmax(train_probs, axis=1)]
         train_acc = accuracy_score(trainY,train_preds)
+        print(cls_name + " on " + dataset + " resample number " + str(resampleID) + ' train acc: ' + str(train_acc))
         second = str(classifier.get_params())
         third = str(train_acc)+","+str(train_time)+",-1,-1,-1,"+str(len(classifier.classes_)) + "," + str(classifier.classes_)
         write_results_to_uea_format(second_line=second, third_line=third, output_path=results_path, classifier_name=cls_name, resample_seed= resampleID,
-                                predicted_class_vals=train_preds, actual_probas=train_probs, dataset_name=dataset, actual_class_vals=trainY, split='TRAIN')
+                                    predicted_class_vals=train_preds, actual_probas=train_probs, dataset_name=dataset, actual_class_vals=trainY, split='TRAIN')
 
-#        results_path+classifier_name+'/Predictions/'+dataset_name+'/testFold'+resampleID+".csv")
 
 def write_results_to_uea_format(output_path, classifier_name, dataset_name, actual_class_vals,
                                 predicted_class_vals, split='TEST', resample_seed=0, actual_probas=None, second_line="No Parameter Info",third_line="N/A",class_labels=None):
@@ -248,7 +265,7 @@ def write_results_to_uea_format(output_path, classifier_name, dataset_name, actu
     file = open(str(output_path)+"/"+str(classifier_name)+"/Predictions/" + str(dataset_name) +
                 "/"+str(train_or_test)+"Fold"+str(resample_seed)+".csv", "w")
 
-    print(classifier_name+" on "+dataset_name+" for resample "+str(resample_seed)+"   "+train_or_test+" data has line three "+third_line)
+    # print(classifier_name+" on "+dataset_name+" for resample "+str(resample_seed)+"   "+train_or_test+" data has line three "+third_line)
     # the first line of the output file is in the form of:
     # <classifierName>,<datasetName>,<train/test>,<Class Labels>
     file.write(str(dataset_name) + ","+str(classifier_name)+"," + str(train_or_test)+","+str(resample_seed)+",MILLISECONDS,PREDICTIONS, Generated by experiments.py")

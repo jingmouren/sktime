@@ -33,6 +33,7 @@
 # todo comment up!
 # todo score
 # todo param docs
+# todo use generators in indexed for loops
 # todo parallel for proxtree, proxfor and proxstump? (might not work that last one!)
 
 from numpy.ma import floor
@@ -198,6 +199,7 @@ class ProximityStump(Classifier):
         self.distance_measure = None
         self.gain = None
         self.label_encoder = label_encoder
+        self.classes_ = None
 
     @staticmethod
     def get_distance_measure_key():
@@ -225,6 +227,7 @@ class ProximityStump(Classifier):
             self.distance_measure = self.param_perm[key]
             self.distance_measure_param_perm = self.param_perm.copy()
             del self.distance_measure_param_perm[key]
+        self.classes_ = self.label_encoder.classes_
         self.exemplar_instances, self.exemplar_class_labels, self.remaining_instances, self.remaining_class_labels = \
             self.pick_exemplars_method(instances, class_labels, self.rand)
         distances = self.exemplar_distances(self.remaining_instances)
@@ -326,6 +329,7 @@ class ProximityTree(Classifier): # todd rename split to stump
         # vars set in the fit method
         self._branches = None
         self._split = None
+        self.classes_ = None
 
     def predict_proba(self, instances):
         check_data(instances)
@@ -386,6 +390,7 @@ class ProximityTree(Classifier): # todd rename split to stump
         if not hasattr(self.label_encoder, 'classes_'):
             self.label_encoder.fit(class_labels)
             class_labels = self.label_encoder.transform(class_labels)
+        self.classes_ = self.label_encoder.classes_
         tree_stack = [self]
         instances_stack = [instances]
         class_labels_stack = [class_labels]
@@ -418,11 +423,9 @@ class ProximityTree(Classifier): # todd rename split to stump
 
     def _get_best_split(self, instances, class_labels):
         splits = np.empty(self.r, dtype=object)
-        print('split gains:')
         for index in np.arange(self.r):
             split = self._pick_rand_split(instances, class_labels)
             splits[index] = split
-            print(str(split.gain))
         best_split = utilities.best(splits, lambda a, b: b.gain - a.gain, self.rand)
         return best_split
 
@@ -471,6 +474,7 @@ class ProximityForest(Classifier):
         self.param_pool = param_pool
         # below set in fit method
         self._trees = None
+        self.classes_ = None
 
     def fit(self, instances, class_labels):
         check_data(instances, class_labels)
@@ -483,9 +487,10 @@ class ProximityForest(Classifier):
             class_labels = self.label_encoder.transform(class_labels)
         if callable(self.param_pool):
             self.param_pool = self.param_pool(instances)
+        self.classes_ = self.label_encoder.classes_
         self._trees = np.empty(self.num_trees, dtype=object)
         for tree_index in np.arange(self.num_trees):
-            print(tree_index)
+            print("tree index: " + str(tree_index))
             tree = ProximityTree(
                 gain_method=self.gain_method,
                 r=self.r,
@@ -502,7 +507,7 @@ class ProximityForest(Classifier):
     def predict_proba(self, instances):
         check_data(instances)
         overall_predict_probas = np.zeros((instances.shape[0], len(self.label_encoder.classes_)))
-        for tree_index in range(0, len(self._trees) - 1):
+        for tree_index in np.arange(len(self._trees)):
             tree = self._trees[tree_index]
             predict_probas = tree.predict_proba(instances)
             for instance_index in np.arange(predict_probas.shape[0]):
@@ -512,33 +517,4 @@ class ProximityForest(Classifier):
         normalize(overall_predict_probas, copy=False)
         return overall_predict_probas
 
-if __name__ == "__main__":
-    # # class_labels_parent = np.array([1,1,1,1,2,2,2,2])
-    # # class_labels_child_b = np.array([1,1,2,2])
-    # # class_labels_child_a = np.array([1,1,2,2])
-    # class_labels_parent = np.array([1,1,1,1,2,2,2,2])
-    # b = np.array([1,1,2,2])
-    # a = np.array([1,1,2,2])
-    # # class_labels_child_c = np.array([2,2])
-    # # class_labels_parent = np.array([1,1,1,2,2,2])
-    # # class_labels_child_b = np.array([2,2,2])
-    # # class_labels_child_a = np.array([1,1,1])
-    # score = gini(class_labels_parent, [a, b])
-    # print(score)
-
-    x_train, y_train = load_gunpoint(split='TRAIN', return_X_y=True)
-    x_test, y_test = load_gunpoint(split='TEST', return_X_y=True)
-    classifier = ProximityForest(rand=np.random.RandomState(3), r=5, num_trees=1)
-    classifier.fit(x_train, y_train)
-
-    for tree in classifier._trees:
-        distribution = tree.predict_proba(x_test)
-        predictions = utilities.predict_from_distribution(distribution, classifier.rand, classifier.label_encoder)
-        acc = utilities.accuracy(y_test, predictions)
-        print(str(acc))
-
-    distribution = classifier.predict_proba(x_test)
-    predictions = utilities.predict_from_distribution(distribution, classifier.rand, classifier.label_encoder)
-    acc = utilities.accuracy(y_test, predictions)
-    print("----")
-    print("acc: " + str(acc))
+# todo debug option to do helpful printing
