@@ -12,7 +12,7 @@ def accuracy(actual_class_values, predicted_class_values):
 
 def predict_from_distribution(distributions, rand, label_encoder):
     predictions = np.empty((distributions.shape[0]), dtype=int)
-    for instance_index in np.arange(predictions.shape[0]):
+    for instance_index in range(0, predictions.shape[0]):
         distribution = distributions[instance_index]
         prediction = arg_max(distribution, rand)
         predictions[instance_index] = prediction

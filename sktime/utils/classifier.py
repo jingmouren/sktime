@@ -19,9 +19,10 @@ class Classifier(BaseEstimator, ClassifierMixin):
     def predict_proba(self, instances):
         raise NotImplementedError('abstract method')
 
-    def predict(self, instances):
-        check_data(instances)
-        distributions = self.predict_proba(instances)
+    def predict(self, instances, should_check_data=True):
+        if should_check_data:
+            check_data(instances)
+        distributions = self.predict_proba(instances, should_check_data=False)
         predictions = np.empty((distributions.shape[0]))
         for instance_index in range(0, predictions.shape[0]):
             distribution = distributions[instance_index]
