@@ -4,7 +4,7 @@ import sktime.contrib.frequency_based.rise as fb
 import sktime.contrib.interval_based.tsf as ib
 import sktime.contrib.dictionary_based.boss_ensemble as db
 import sktime.classifiers.ensemble as ensemble
-from classifiers.proximity import ProximityForest
+from sktime.classifiers.proximity import ProximityForest
 from sktime.transformers.compose import RowwiseTransformer
 from sktime.transformers.compose import Tabulariser
 from sktime.transformers.series_to_series import RandomIntervalSegmenter
@@ -311,11 +311,12 @@ if __name__ == "__main__":
     """
 #Input args -dp=${dataDir} -rp=${resultsDir} -cn=${classifier} -dn=${dataset} -f=\$LSB_JOBINDEX
     if sys.argv.__len__() > 1: #cluster run, this is fragile
+        print(sys.argv)
         data_dir = sys.argv[1]
         results_dir = sys.argv[2]
         classifier =  sys.argv[3]
         dataset = sys.argv[4]
-        resample = sys.argv[5]
+        resample = int(sys.argv[5])
         tf=sys.argv[6]
         run_experiment(problem_path=data_dir, results_path=results_dir, cls_name=classifier, dataset=dataset,
                        resampleID=resample,train_file=tf)

@@ -32,39 +32,46 @@
 # todo comment up!
 # todo score
 # todo param docs
-# todo use generators in indexed for loops
+
+import numpy as np
 from numpy.ma import floor
 from pandas import DataFrame, Series
-from scipy.stats import uniform, randint
-import numpy as np
-from sklearn.base import clone
-from sklearn.preprocessing import normalize, LabelEncoder
-from utils import utilities
-from utils.classifier import Classifier
-from datasets import load_gunpoint
-from distances import dtw_distance, lcss_distance, erp_distance, ddtw_distance, wddtw_distance, wdtw_distance, \
-    msm_distance
-from utils.transformations import tabularise
-from utils.utilities import check_data
+from scipy.stats import randint, uniform
+from sklearn.preprocessing import LabelEncoder, normalize
+
+from sktime.distances import (
+    ddtw_distance, dtw_distance, erp_distance, lcss_distance, msm_distance, wddtw_distance, wdtw_distance,
+    )
+from sktime.utils import utilities
+from sktime.utils.classifier import Classifier
+from sktime.utils.transformations import tabularise
+from sktime.utils.utilities import check_data
 
 
 def get_default_num_trees():
+    '''returns default number of trees'''
     return 100
 
+
 def get_default_gain_method():
+    '''returns default gain method for a split at a tree node'''
     return gini
 
 
 def get_default_r():
+    '''returns default r (number of splits) to try at a tree node'''
     return 5
 
 
 def get_default_is_leaf_method():
+    '''returns default method for checking whether a tree should branch further or not'''
     return pure
 
 
 def get_default_pick_exemplars_method():
+    '''returns default method for picking exemplar instances from a dataset'''
     return pick_rand_exemplars
+
 
 # test whether a set of class labels are pure (i.e. all the same)
 def pure(class_labels):
@@ -103,7 +110,7 @@ def gini_node(class_labels):
     score = 1
     if num_instances > 0:
         # count each class
-        unique_class_labels, class_counts = np.unique(class_labels, return_counts=True)
+        unique_class_labels, class_counts = np.unique(class_labels, return_counts = True)
         # subtract class entropy from current score for each class
         for index in range(0, len(unique_class_labels)):
             class_count = class_counts[index]
@@ -131,8 +138,8 @@ def pick_rand_exemplars(instances, class_labels, rand):
     unique_class_labels = np.unique(class_labels)
     num_unique_class_labels = len(unique_class_labels)
     chosen_instances = []
-    chosen_class_labels = np.empty(num_unique_class_labels, dtype=int)
-    chosen_indices = np.empty(num_unique_class_labels, dtype=int)
+    chosen_class_labels = np.empty(num_unique_class_labels, dtype = int)
+    chosen_indices = np.empty(num_unique_class_labels, dtype = int)
     # for each class randomly choose and instance
     for class_label_index in range(0, num_unique_class_labels):
         class_label = unique_class_labels[class_label_index]
@@ -158,41 +165,61 @@ def pick_rand_exemplars(instances, class_labels, rand):
 def get_default_param_pool(instances):
     # find dataset properties
     instance_length = utilities.max_instance_length(
-        instances)  # todo should this use the max instance length for unequal length dataset instances?
+            instances)  # todo should this use the max instance length for unequal length dataset instances?
     max_raw_warping_window = floor((instance_length + 1) / 4)
     max_warping_window_percentage = max_raw_warping_window / instance_length
     stdp = utilities.stdp(instances)
     # setup param pool dictionary array (same structure as sklearn's GridSearchCV params!)
     param_pool = [
-        {ProximityStump.get_distance_measure_key(): [dtw_distance],
-         'w': uniform(0, max_warping_window_percentage)},
-        {ProximityStump.get_distance_measure_key(): [ddtw_distance],
-         'w': uniform(0, max_warping_window_percentage)},
-        {ProximityStump.get_distance_measure_key(): [wdtw_distance],
-         'g': uniform(0, 1)},
-        {ProximityStump.get_distance_measure_key(): [wddtw_distance],
-         'g': uniform(0, 1)},
-        {ProximityStump.get_distance_measure_key(): [lcss_distance],
-         'epsilon': uniform(0.2 * stdp, stdp),
-         'delta': randint(low=0, high=max_raw_warping_window)},
-        {ProximityStump.get_distance_measure_key(): [erp_distance],
-         'g': uniform(0.2 * stdp, 0.8 * stdp),
-         'band_size': randint(low=0, high=max_raw_warping_window)},
-        # {Split.get_distance_measure_key(): [twe_distance],
-        #  'g': uniform(0.2 * stdp, 0.8 * stdp),
-        #  'band_size': randint(low=0, high=max_raw_warping_window)},
-        {ProximityStump.get_distance_measure_key(): [msm_distance],
-         'c': [0.01, 0.01375, 0.0175, 0.02125, 0.025, 0.02875, 0.0325, 0.03625, 0.04, 0.04375, 0.0475, 0.05125,
-               0.055, 0.05875, 0.0625, 0.06625, 0.07, 0.07375, 0.0775, 0.08125, 0.085, 0.08875, 0.0925, 0.09625,
-               0.1, 0.136, 0.172, 0.208,
-               0.244, 0.28, 0.316, 0.352, 0.388, 0.424, 0.46, 0.496, 0.532, 0.568, 0.604, 0.64, 0.676, 0.712, 0.748,
-               0.784, 0.82, 0.856,
-               0.892, 0.928, 0.964, 1, 1.36, 1.72, 2.08, 2.44, 2.8, 3.16, 3.52, 3.88, 4.24, 4.6, 4.96, 5.32, 5.68,
-               6.04, 6.4, 6.76, 7.12,
-               7.48, 7.84, 8.2, 8.56, 8.92, 9.28, 9.64, 10, 13.6, 17.2, 20.8, 24.4, 28, 31.6, 35.2, 38.8, 42.4, 46,
-               49.6, 53.2, 56.8, 60.4,
-               64, 67.6, 71.2, 74.8, 78.4, 82, 85.6, 89.2, 92.8, 96.4, 100]},
-    ]
+            {
+                    ProximityStump.get_distance_measure_key(): [dtw_distance],
+                    'w'                                      : uniform(0, max_warping_window_percentage)
+                    },
+            {
+                    ProximityStump.get_distance_measure_key(): [ddtw_distance],
+                    'w'                                      : uniform(0, max_warping_window_percentage)
+                    },
+            {
+                    ProximityStump.get_distance_measure_key(): [wdtw_distance],
+                    'g'                                      : uniform(0, 1)
+                    },
+            {
+                    ProximityStump.get_distance_measure_key(): [wddtw_distance],
+                    'g'                                      : uniform(0, 1)
+                    },
+            {
+                    ProximityStump.get_distance_measure_key(): [lcss_distance],
+                    'epsilon'                                : uniform(0.2 * stdp, stdp),
+                    'delta'                                  : randint(low = 0, high = max_raw_warping_window)
+                    },
+            {
+                    ProximityStump.get_distance_measure_key(): [erp_distance],
+                    'g'                                      : uniform(0.2 * stdp, 0.8 * stdp),
+                    'band_size'                              : randint(low = 0, high = max_raw_warping_window)
+                    },
+            # {Split.get_distance_measure_key(): [twe_distance],
+            #  'g': uniform(0.2 * stdp, 0.8 * stdp),
+            #  'band_size': randint(low=0, high=max_raw_warping_window)},
+            {
+                    ProximityStump.get_distance_measure_key(): [msm_distance],
+                    'c'                                      : [0.01, 0.01375, 0.0175, 0.02125, 0.025, 0.02875, 0.0325,
+                                                                0.03625, 0.04, 0.04375, 0.0475, 0.05125,
+                                                                0.055, 0.05875, 0.0625, 0.06625, 0.07, 0.07375, 0.0775,
+                                                                0.08125, 0.085, 0.08875, 0.0925, 0.09625,
+                                                                0.1, 0.136, 0.172, 0.208,
+                                                                0.244, 0.28, 0.316, 0.352, 0.388, 0.424, 0.46, 0.496,
+                                                                0.532, 0.568, 0.604, 0.64, 0.676, 0.712, 0.748,
+                                                                0.784, 0.82, 0.856,
+                                                                0.892, 0.928, 0.964, 1, 1.36, 1.72, 2.08, 2.44, 2.8,
+                                                                3.16, 3.52, 3.88, 4.24, 4.6, 4.96, 5.32, 5.68,
+                                                                6.04, 6.4, 6.76, 7.12,
+                                                                7.48, 7.84, 8.2, 8.56, 8.92, 9.28, 9.64, 10, 13.6, 17.2,
+                                                                20.8, 24.4, 28, 31.6, 35.2, 38.8, 42.4, 46,
+                                                                49.6, 53.2, 56.8, 60.4,
+                                                                64, 67.6, 71.2, 74.8, 78.4, 82, 85.6, 89.2, 92.8, 96.4,
+                                                                100]
+                    },
+            ]
     return param_pool
 
 
@@ -201,12 +228,12 @@ def get_default_param_pool(instances):
 class ProximityStump(Classifier):
 
     def __init__(self,
-                 pick_exemplars_method=None,
-                 param_perm=None,
-                 gain_method=None,
-                 label_encoder=None,
-                 rand=np.random.RandomState):
-        super().__init__(rand=rand)
+                 pick_exemplars_method = None,
+                 param_perm = None,
+                 gain_method = None,
+                 label_encoder = None,
+                 rand = np.random.RandomState):
+        super().__init__(rand = rand)
         self.param_perm = param_perm
         self.gain_method = gain_method
         self.pick_exemplars_method = pick_exemplars_method
@@ -228,7 +255,7 @@ class ProximityStump(Classifier):
     def get_distance_measure_key():
         return 'dm'
 
-    def fit(self, instances, class_labels, should_check_data=True):
+    def fit(self, instances, class_labels, should_check_data = True):
         if should_check_data:
             check_data(instances, class_labels)
         if callable(self.param_perm):
@@ -275,18 +302,18 @@ class ProximityStump(Classifier):
         self.gain = self.gain_method(class_labels, self.branch_class_labels)
         return self
 
-    def exemplar_distances(self, instances, should_check_data=True):
+    def exemplar_distances(self, instances, should_check_data = True):
         if should_check_data:
             check_data(instances)
         num_instances = instances.shape[0]
         distances = []
         for instance_index in range(0, num_instances):
             instance = instances.iloc[instance_index, :]
-            distances_inst = self.exemplar_distance_inst(instance, should_check_data=False)
+            distances_inst = self.exemplar_distance_inst(instance, should_check_data = False)
             distances.append(distances_inst)
         return distances
 
-    def exemplar_distance_inst(self, instance, should_check_data=True):
+    def exemplar_distance_inst(self, instance, should_check_data = True):
         if should_check_data:
             if not isinstance(instance, Series):
                 raise ValueError("instance not a panda series")
@@ -298,14 +325,14 @@ class ProximityStump(Classifier):
             distances.append(distance)
         return distances
 
-    def predict_proba(self, instances, should_check_data=True):
+    def predict_proba(self, instances, should_check_data = True):
         if should_check_data:
             check_data(instances)
         num_instances = instances.shape[0]
         num_exemplars = len(self.exemplar_instances)
         num_unique_class_labels = len(self.label_encoder.classes_)
         distributions = []
-        distances = self.exemplar_distances(instances, should_check_data=False)
+        distances = self.exemplar_distances(instances, should_check_data = False)
         for instance_index in range(0, num_instances):
             distribution = [0] * num_unique_class_labels
             distributions.append(distribution)
@@ -317,34 +344,35 @@ class ProximityStump(Classifier):
             for exemplar_index in range(0, num_exemplars - 1):
                 distribution[exemplar_index] += max_distance
         distributions = np.array(distributions)
-        normalize(distributions, copy=False, norm='l1')
+        normalize(distributions, copy = False, norm = 'l1')
         return distributions
 
-    def _find_distance(self, instance_a, instance_b, should_check_data=True):
+    def _find_distance(self, instance_a, instance_b, should_check_data = True):
         if should_check_data:
             if not isinstance(instance_a, Series):
                 raise ValueError("instance not a panda series")
             if not isinstance(instance_b, Series):
                 raise ValueError("instance not a panda series")
-        instance_a = tabularise(instance_a, return_array=True)
-        instance_b = tabularise(instance_b, return_array=True)
+        instance_a = tabularise(instance_a, return_array = True)
+        instance_b = tabularise(instance_b, return_array = True)
         instance_a = np.transpose(instance_a)
         instance_b = np.transpose(instance_b)
         return self.distance_measure(instance_a, instance_b, **self.distance_measure_param_perm)
 
+
 class ProximityTree(Classifier):  # todd rename split to stump
 
     def __init__(self,
-                 gain_method=get_default_gain_method(),
-                 r=get_default_r(),
-                 max_depth=np.math.inf,
-                 rand=np.random.RandomState(),
-                 is_leaf_method=get_default_is_leaf_method(),
-                 level=0,
-                 label_encoder=None,
-                 pick_exemplars_method=get_default_pick_exemplars_method(),
-                 param_pool=get_default_param_pool):
-        super().__init__(rand=rand)
+                 gain_method = get_default_gain_method(),
+                 r = get_default_r(),
+                 max_depth = np.math.inf,
+                 rand = np.random.RandomState(),
+                 is_leaf_method = get_default_is_leaf_method(),
+                 level = 0,
+                 label_encoder = None,
+                 pick_exemplars_method = get_default_pick_exemplars_method(),
+                 param_pool = get_default_param_pool):
+        super().__init__(rand = rand)
         self.gain_method = gain_method
         self.r = r
         self.max_depth = max_depth
@@ -358,7 +386,7 @@ class ProximityTree(Classifier):  # todd rename split to stump
         self._split = None
         self.classes_ = None
 
-    def predict_proba(self, instances, should_check_data=True):
+    def predict_proba(self, instances, should_check_data = True):
         if should_check_data:
             check_data(instances)
         num_instances = instances.shape[0]
@@ -379,32 +407,32 @@ class ProximityTree(Classifier):  # todd rename split to stump
             prediction[closest_exemplar_class_label] += 1
             distributions.append(prediction)
         distributions = np.array(distributions)
-        normalize(distributions, copy=False, norm='l1')
+        normalize(distributions, copy = False, norm = 'l1')
         return distributions
 
     def _branch(self, instances, class_labels):
         self._split = self._get_best_split(instances, class_labels)
-        num_branches = len(self._split.branch_instances) # todo use builtin __len__
+        num_branches = len(self._split.branch_instances)  # todo use builtin __len__
         self._branches = []
         if self.level < self.max_depth:
             for branch_index in range(0, num_branches):
                 branch_class_labels = self._split.branch_class_labels[branch_index]
                 if not self.is_leaf_method(branch_class_labels):
                     tree = ProximityTree(
-                        gain_method=self.gain_method,
-                        r=self.r,
-                        rand=self.rand,
-                        is_leaf_method=self.is_leaf_method,
-                        max_depth=self.max_depth,
-                        label_encoder=self.label_encoder,
-                        param_pool=self.param_pool,
-                        level=self.level + 1,
-                    )
+                            gain_method = self.gain_method,
+                            r = self.r,
+                            rand = self.rand,
+                            is_leaf_method = self.is_leaf_method,
+                            max_depth = self.max_depth,
+                            label_encoder = self.label_encoder,
+                            param_pool = self.param_pool,
+                            level = self.level + 1,
+                            )
                     self._branches.append(tree)
                 else:
                     self._branches.append(None)
 
-    def fit(self, instances, class_labels, should_check_data=True):
+    def fit(self, instances, class_labels, should_check_data = True):
         if should_check_data:
             check_data(instances, class_labels)
         if self.level is None or self.level < 0:
@@ -447,7 +475,7 @@ class ProximityTree(Classifier):  # todd rename split to stump
                     class_labels_stack.insert(0, class_labels)
         return self
 
-    def _get_rand_param_perm(self, params=None):
+    def _get_rand_param_perm(self, params = None):
         # example:
         # param_grid = [
         #   {'C': [1, 10, 100, 1000], 'kernel': ['linear']},
@@ -460,7 +488,7 @@ class ProximityTree(Classifier):  # todd rename split to stump
         return permutation
 
     def _get_best_split(self, instances, class_labels):
-        splits = np.empty(self.r, dtype=object)
+        splits = np.empty(self.r, dtype = object)
         for index in range(0, self.r):
             split = self._pick_rand_split(instances, class_labels)
             splits[index] = split
@@ -469,12 +497,12 @@ class ProximityTree(Classifier):  # todd rename split to stump
 
     def _pick_rand_split(self, instances, class_labels):
         param_perm = self._get_rand_param_perm()
-        split = ProximityStump(pick_exemplars_method=self.pick_exemplars_method,
-                               rand=self.rand,
-                               gain_method=self.gain_method,
-                               label_encoder=self.label_encoder,
-                               param_perm=param_perm)
-        split.fit(instances, class_labels, should_check_data=False)
+        split = ProximityStump(pick_exemplars_method = self.pick_exemplars_method,
+                               rand = self.rand,
+                               gain_method = self.gain_method,
+                               label_encoder = self.label_encoder,
+                               param_perm = param_perm)
+        split.fit(instances, class_labels, should_check_data = False)
         return split
 
     def _pick_param_permutation(self, param_pool):  # dict of params
@@ -485,27 +513,25 @@ class ProximityTree(Classifier):  # todd rename split to stump
                 if isinstance(param_value, dict):
                     param_value = self._get_rand_param_perm(param_value)
             elif hasattr(param_values, 'rvs'):
-                param_value = param_values.rvs(random_state=self.rand)
+                param_value = param_values.rvs(random_state = self.rand)
             else:
                 raise Exception('unknown type')
             param_permutation[param_name] = param_value
         return param_permutation
 
 
-
 class ProximityForest(Classifier):
 
-
     def __init__(self,
-                 gain_method=get_default_gain_method(),
-                 r=get_default_r(),
-                 num_trees=get_default_num_trees(),
-                 rand=np.random.RandomState(),
-                 is_leaf_method=get_default_is_leaf_method(),
-                 max_depth=np.math.inf,
-                 label_encoder=None,
-                 param_pool=get_default_param_pool):
-        super().__init__(rand=rand)
+                 gain_method = get_default_gain_method(),
+                 r = get_default_r(),
+                 num_trees = get_default_num_trees(),
+                 rand = np.random.RandomState(),
+                 is_leaf_method = get_default_is_leaf_method(),
+                 max_depth = np.math.inf,
+                 label_encoder = None,
+                 param_pool = get_default_param_pool):
+        super().__init__(rand = rand)
         self.gain_method = gain_method
         self.r = r
         self.label_encoder = label_encoder
@@ -517,7 +543,7 @@ class ProximityForest(Classifier):
         self._trees = None
         self.classes_ = None
 
-    def fit(self, instances, class_labels, should_check_data=True):
+    def fit(self, instances, class_labels, should_check_data = True):
         if should_check_data:
             check_data(instances, class_labels)
         if self.num_trees < 1:
@@ -530,31 +556,31 @@ class ProximityForest(Classifier):
         if callable(self.param_pool):
             self.param_pool = self.param_pool(instances)
         self.classes_ = self.label_encoder.classes_
-        self._trees = np.empty(self.num_trees, dtype=object)
+        self._trees = np.empty(self.num_trees, dtype = object)
         for tree_index in range(0, self.num_trees):
             # print("tree index: " + str(tree_index))
             tree = ProximityTree(
-                gain_method=self.gain_method,
-                r=self.r,
-                rand=self.rand,
-                is_leaf_method=self.is_leaf_method,
-                max_depth=self.max_depth,
-                label_encoder=self.label_encoder,
-                param_pool=self.param_pool
-            )
+                    gain_method = self.gain_method,
+                    r = self.r,
+                    rand = self.rand,
+                    is_leaf_method = self.is_leaf_method,
+                    max_depth = self.max_depth,
+                    label_encoder = self.label_encoder,
+                    param_pool = self.param_pool
+                    )
             self._trees[tree_index] = tree
-            tree.fit(instances, class_labels, should_check_data=False)
+            tree.fit(instances, class_labels, should_check_data = False)
         return self
 
-    def predict_proba(self, instances, should_check_data=True):
+    def predict_proba(self, instances, should_check_data = True):
         if should_check_data:
             check_data(instances)
         # overall_predict_probas = np.zeros((instances.shape[0], len(self.label_encoder.classes_)))
         overall_predict_probas = np.zeros((instances.shape[0], len(self.label_encoder.classes_)))
         for tree in self._trees:
-            predict_probas = tree.predict_proba(instances, should_check_data=False)
+            predict_probas = tree.predict_proba(instances, should_check_data = False)
             overall_predict_probas = np.add(overall_predict_probas, predict_probas)
-        normalize(overall_predict_probas, copy=False, norm='l1')
+        normalize(overall_predict_probas, copy = False, norm = 'l1')
         return overall_predict_probas
 
 # todo debug option to do helpful printing

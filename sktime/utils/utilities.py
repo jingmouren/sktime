@@ -1,6 +1,7 @@
 import numpy as np
 from pandas import DataFrame
 
+
 def accuracy(actual_class_values, predicted_class_values):
     correct_count = 0
     num_instances = len(actual_class_values)
@@ -10,8 +11,9 @@ def accuracy(actual_class_values, predicted_class_values):
     accuracy = correct_count / num_instances
     return accuracy
 
+
 def predict_from_distribution(distributions, rand, label_encoder):
-    predictions = np.empty((distributions.shape[0]), dtype=int)
+    predictions = np.empty((distributions.shape[0]), dtype = int)
     for instance_index in range(0, predictions.shape[0]):
         distribution = distributions[instance_index]
         prediction = arg_max(distribution, rand)
@@ -19,13 +21,15 @@ def predict_from_distribution(distributions, rand, label_encoder):
     predictions = label_encoder.inverse_transform(predictions)
     return predictions
 
-def check_data(instances, class_labels=None):
+
+def check_data(instances, class_labels = None):
     if not isinstance(instances, DataFrame):
         raise ValueError("instances not in panda dataframe")
     if class_labels is not None:
         # todo these checks could probs be / is defined elsewhere
         if len(class_labels) != instances.shape[0]:
             raise ValueError("instances not same length as class_labels")
+
 
 def stdp(instances):
     sum = 0
