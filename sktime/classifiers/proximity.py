@@ -49,40 +49,102 @@ from sktime.utils.utilities import check_data
 
 
 def get_default_num_trees():
-    '''returns default number of trees'''
+    '''
+    returns default number of trees to make in a proximity forest
+    ----
+    Returns
+    ----
+    result : int
+        default number of trees
+    '''
     return 100
 
 
 def get_default_gain_method():
-    '''returns default gain method for a split at a tree node'''
+    '''
+    returns default gain method for a split at a tree node
+    ----
+    Returns
+    ----
+    result : callable
+        default gain method
+    '''
     return gini
 
 
 def get_default_r():
-    '''returns default r (number of splits) to try at a tree node'''
+    '''
+    returns default r (number of splits) to try at a tree node
+    ----
+    Returns
+    ----
+    result : int
+        default number of splits to examine
+    '''
     return 5
 
 
 def get_default_is_leaf_method():
-    '''returns default method for checking whether a tree should branch further or not'''
+    '''
+    returns default method for checking whether a tree should branch further or not
+    ----
+    Returns
+    ----
+    result : callable
+        default method to check whether a tree node is a leaf or not
+    '''
     return pure
 
 
 def get_default_pick_exemplars_method():
-    '''returns default method for picking exemplar instances from a dataset'''
-    return pick_rand_exemplars
+    '''
+    returns default method for picking exemplar instances from a dataset
+    ----
+    Returns
+    ----
+    result : callable
+        default method to pick exemplars from a dataset (set of instances and class labels)
+    '''
+    return pick_one_exemplar_per_class
 
-
-# test whether a set of class labels are pure (i.e. all the same)
 def pure(class_labels):
+    '''
+    test whether a set of class labels are pure (i.e. all the same)
+    ----
+    Parameters
+    ----
+    class_labels : 1d numpy array
+        array of class labels
+    ----
+    Returns
+    ----
+    result : boolean
+        whether the set of class labels is pure
+    '''
     # get unique class labels
     unique_class_labels = np.unique(class_labels)
     # if more than 1 unique then not pure
     return len(unique_class_labels) <= 1
 
 
-# get gini score of a split, i.e. the gain from parent to children
+#
 def gini(parent_class_labels, children_class_labels):
+    '''
+    get gini score of a split, i.e. the gain from parent to children
+    ----
+    Parameters
+    ----
+    parent_class_labels : 1d numpy array
+        array of class labels at parent
+    children_class_labels : list of 1d numpy array
+        list of array of class labels, one array per child
+    ----
+    Returns
+    ----
+    score : float
+        gini score of the split from parent class labels to children. Note the gini score is scaled to be between 0
+        and 1. 1 == pure, 0 == not pure
+    '''
     # find gini for parent node
     parent_score = gini_node(parent_class_labels)
     # find number of instances overall
@@ -102,9 +164,20 @@ def gini(parent_class_labels, children_class_labels):
     score = parent_score - children_score_sum
     return score
 
-
-# get gini score at a specific node
 def gini_node(class_labels):
+    '''
+    get gini score at a specific node
+    ----
+    Parameters
+    ----
+    class_labels : 1d numpy array
+        array of class labels
+    ----
+    Returns
+    ----
+    score : float
+        gini score for the set of class labels (i.e. how pure they are). 1 == pure, 0 == not pure
+    '''
     # get number instances at node
     num_instances = class_labels.shape[0]
     score = 1
@@ -121,19 +194,40 @@ def gini_node(class_labels):
     score *= 2
     return score
 
-
-# todo
+# todo info gain
 def information_gain(parent_class_labels, children_class_labels):
     raise Exception('not implemented yet')
 
 
-# todo
+# todo chi sq
 def chi_squared(parent_class_labels, children_class_labels):
     raise Exception('not implemented yet')
 
 
-# pick one random exemplar instance per class
-def pick_rand_exemplars(instances, class_labels, rand):
+def pick_one_exemplar_per_class(instances, class_labels, rand):
+    '''
+    pick one random exemplar instance per class
+    ----
+    Parameters
+    ----
+    instances : panda dataframe
+        instances representing a dataset
+    class_labels : 1d numpy array
+        array of class labels, one for each instance in the instances panda dataframe parameter
+    ----
+    Returns
+    ----
+    chosen_instances : panda dataframe
+        the chosen exemplar instances
+    chosen_class_labels : numpy 1d array
+        array of class labels corresponding to the exemplar instances
+        the exemplar instances class labels
+    remaining_instances : panda dataframe
+        the remaining instances after exemplars have been removed
+    remaining_class_labels : numpy 1d array
+        array of class labels corresponding to the exemplar instances
+        the remaining instances class labels after picking exemplars
+    '''
     # find unique class labels
     unique_class_labels = np.unique(class_labels)
     num_unique_class_labels = len(unique_class_labels)
@@ -160,9 +254,21 @@ def pick_rand_exemplars(instances, class_labels, rand):
     instances = instances.drop(instances.index[chosen_indices])
     return chosen_instances, chosen_class_labels, instances, class_labels
 
-
-# default parameter pool of distance measures and corresponding parameters derived from a dataset
-def get_default_param_pool(instances):
+def get_all_distance_measures_param_pool(instances):
+    '''
+    find parameter pool for all available distance measures
+    ----
+    Parameters
+    ----
+    instances : panda dataframe
+        instances representing a dataset
+    ----
+    Returns
+    ----
+    param_pool : list of dicts
+        list of dictionaries to pick distance measures and corresponding parameters from. This should be in the same
+        format as sklearn's GridSearchCV parameters
+    '''
     # find dataset properties
     instance_length = utilities.max_instance_length(
             instances)  # todo should this use the max instance length for unequal length dataset instances?
@@ -222,10 +328,57 @@ def get_default_param_pool(instances):
             ]
     return param_pool
 
-
-# proximity tree classifier of depth 1 - in other words, a k=1 nearest neighbour classifier with neighbourhood limited
-# to x exemplar instances
 class ProximityStump(Classifier):
+
+    '''
+    proximity tree classifier of depth 1 - in other words, a k=1 nearest neighbour classifier with neighbourhood limited
+    to x exemplar instances
+    ----
+    Parameters
+    ----
+    pick_exemplars_method : callable
+        Method to pick exemplars from a set of instances and class labels
+    param_perm : dict
+        a dictionary containing a distance measure and corresponding parameter
+    gain_method : callable
+        a method to calculate the gain of this split / stump
+    label_encoder : LabelEncoder
+        a label encoder, can be pre-populated
+    rand : numpy RandomState
+        a random state for sampling random numbers
+    ----
+    Attributes
+    ----
+    exemplar_instances : panda dataframe
+        the chosen exemplar instances
+    exemplar_class_labels : numpy 1d array
+        array of class labels corresponding to the exemplar instances
+        the exemplar instances class labels
+    remaining_instances : panda dataframe
+        the remaining instances after exemplars have been removed
+    remaining_class_labels : numpy 1d array
+        array of class labels corresponding to the exemplar instances
+        the remaining instances class labels after picking exemplars
+    branch_instances : list of panda dataframes
+        list of dataframes of instances, one for each child of this stump. I.e. if a stump splits into two children,
+        there will be a list of dataframes of length two. branch_instance[0] will contain all train instances
+        closest to exemplar 0, branch_instances[1] contains all train instances closest to exemplar 1,
+        etc. Exemplars are in the exemplar_instances variable
+    branch_class_labels: list of numpy 1d arrays
+        similar to branch_instances, but contains the class labels of the instances closest to each exemplar
+    distance_measure_param_perm: dict
+        parameters to pass to the distance measure method
+    distance_measure: callable
+        the distance measure to use for measure similarity between instances
+    gain: float
+        the gain of this stump
+    label_encoder : LabelEncoder
+        a label encoder, can be pre-populated
+    classes_ :
+        pointer to the label_encoder classes_
+    '''
+
+    __author__ = 'George Oastler (linkedin.com/goastler)'
 
     def __init__(self,
                  pick_exemplars_method = None,
@@ -253,9 +406,30 @@ class ProximityStump(Classifier):
 
     @staticmethod
     def get_distance_measure_key():
+        '''
+        get the key for the distance measure. This key is required for picking the distance measure out of the
+        param_perm constructor parameter.
+        ----
+        Returns
+        ----
+        key : string
+            key for the distance measure for the param_perm dict
+        '''
         return 'dm'
 
     def fit(self, instances, class_labels, should_check_data = True):
+        """
+        
+        ----------
+        X : array-like or sparse matrix of shape = [n_samps, num_atts]
+        The training input samples.  If a Pandas data frame is passed, the column _dim_to_use is extracted
+        y : array-like, shape = [n_samples] or [n_samples, n_outputs]
+        The class labels.
+
+        Returns
+        -------
+        self : object
+        """
         if should_check_data:
             check_data(instances, class_labels)
         if callable(self.param_perm):
@@ -362,6 +536,8 @@ class ProximityStump(Classifier):
 
 class ProximityTree(Classifier):  # todd rename split to stump
 
+    __author__ = 'George Oastler (linkedin.com/goastler)'
+
     def __init__(self,
                  gain_method = get_default_gain_method(),
                  r = get_default_r(),
@@ -371,7 +547,7 @@ class ProximityTree(Classifier):  # todd rename split to stump
                  level = 0,
                  label_encoder = None,
                  pick_exemplars_method = get_default_pick_exemplars_method(),
-                 param_pool = get_default_param_pool):
+                 param_pool = get_all_distance_measures_param_pool):
         super().__init__(rand = rand)
         self.gain_method = gain_method
         self.r = r
@@ -522,6 +698,8 @@ class ProximityTree(Classifier):  # todd rename split to stump
 
 class ProximityForest(Classifier):
 
+    __author__ = 'George Oastler (linkedin.com/goastler)'
+
     def __init__(self,
                  gain_method = get_default_gain_method(),
                  r = get_default_r(),
@@ -530,7 +708,7 @@ class ProximityForest(Classifier):
                  is_leaf_method = get_default_is_leaf_method(),
                  max_depth = np.math.inf,
                  label_encoder = None,
-                 param_pool = get_default_param_pool):
+                 param_pool = get_all_distance_measures_param_pool):
         super().__init__(rand = rand)
         self.gain_method = gain_method
         self.r = r
