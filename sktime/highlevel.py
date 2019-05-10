@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 from sklearn.base import BaseEstimator
 from sklearn.base import _pprint
+import os
+import pickle
 
 __all__ = ['TSCTask', 'ForecastingTask', 'TSCStrategy', 'TSRStrategy']
 
@@ -130,12 +132,12 @@ class BaseStrategy:
         An instance of an appropriately initialized
         low-level estimator
     """
-    def __init__(self, estimator, *args, **kwargs):
+    def __init__(self, estimator, name=None):
         # construct and initialize the estimator
         self._estimator = estimator
         self._case = None
         self._task = None
-        self._name = None
+        self._name = name if name is not None else self.__class__.__name__
         self._traits = {"tags": None}  # traits for matching strategies with tasks
 
     @property
@@ -228,6 +230,47 @@ class BaseStrategy:
         return '%s(%s(%s))' % (class_name, estimator_name,
                                _pprint(self.get_params(deep=False), offset=len(class_name), ),)
 
+
+    def save(self, dataset_name, cv_fold, strategies_save_dir):
+        """
+        Saves the strategy on the hard drive
+
+        Parameters
+        ----------
+        dataset_name:string
+            Name of the dataset
+        cv_fold: int
+            Number of cross validation fold on which the strategy was trained
+        strategies_save_dir: string
+            Path were the strategies will be saved
+        """
+        if strategies_save_dir is None:
+            raise ValueError('Please provide a directory for saving the strategies')
+        
+        #TODO implement check for overwriting already saved files
+        save_path = os.path.join(strategies_save_dir, dataset_name)
+        
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
+        #TODO pickling will not work for all strategies
+        pickle.dump(self, open(os.path.join(save_path, self._name + '_cv_fold'+str(cv_fold)+ '.p'),"wb"))
+
+    def load(self, path):
+        """
+        Load saved strategy
+
+        Parameters
+        ----------
+        path: String
+            location on disk where the strategy was saved
+        
+        Returns
+        -------
+        strategy:
+            sktime strategy
+        """
+        return pickle.load(open(path,'rb'))
 
 class TSCStrategy(BaseStrategy):
     """Strategies for Time Series Classification
